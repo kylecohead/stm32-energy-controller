@@ -10,6 +10,8 @@
 
 #include "main.h"
 
+extern UART_HandleTypeDef huart2;
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 void start_listening_for_commands(void);
 

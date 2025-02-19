@@ -20,7 +20,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		if (rx_index == 0 && rx_buffer[0] == '*') {
 			rx_index++;
 		} else if (rx_index > 0) {
-			if (rx_buffer[rx_index] == '\n') {
+			if (rx_buffer[rx_index] == '#') {
 				rx_buffer[rx_index] = '\0'; // Null terminate the string
 				if (strcmp((char*) rx_buffer, "*Load#") == 0) {
 					// Command to turn on LED D2
@@ -36,10 +36,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		// Restart listening for next byte
 		HAL_UART_Receive_IT(&huart2, &rx_buffer[rx_index], 1);
 	}
+
 }
 
 void start_listening_for_commands(void) {
 	// Start listening for first byte
-	HAL_UART_Receive_IT(&huart2, rx_buffer, 1);
+	HAL_UART_Receive_IT(&huart2, &rx_buffer[rx_index], 1);
 }
 
