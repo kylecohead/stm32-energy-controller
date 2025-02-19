@@ -109,29 +109,52 @@ int main(void) {
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 
-	char tx_buffer[20];
+	// Define transmit buffer for student number
+	char tx_buffer_student_number[8];
+	// Student number to be transmitted on power up
 	uint32_t stu_num = 25964917;
-	sprintf(tx_buffer, "%8ld", stu_num);
-	size_t len = strlen(tx_buffer);
-	//HAL_UART_Transmit(&huart2, (uint8_t*) tx_buffer, len, 100);
+	// Format student number into buffer
+	sprintf(tx_buffer_student_number, "%8lu", stu_num); // 'lu' for unsigned long
+	// Calculate length of string in buffer
+	size_t len = strlen(tx_buffer_student_number);
+	// Transmit formatted student number
+	HAL_UART_Transmit(&huart2, (uint8_t*) tx_buffer_student_number, len, 100);
 
-	uint8_t rxdata[4];
-
+	// Define receive buffer
+	uint8_t rx_buffer[50];
+	volatile uint8_t rx_index = 0;
+	// Start listening for first byte
+	HAL_UART_Receive_IT(&huart2, rx_buffer, 1);
+	//-----------------------------------------------
+	//UART receive interrupt callback
+	void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+		if (huart->Instance == USART2) {
+			// Check for full command
+			if (rx_index == 0 && rx_buffer[0] == '*') {
+				rx_index++;
+			} else if (rx_index > 0) {
+				if (rx_buffer[rx_index] == '\n') {
+					rx_buffer[rx_index] = '\0'; // Null terminate the string
+					if (strcmp((char*) rx_buffer, "*Load#") == 0) {
+						// Command to turn on LED D2
+						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
+					}
+					rx_index = 0; // Reset for next command
+				} else if (rx_index < 49) {
+					rx_index++;
+				} else {
+					rx_index = 0; // Buffer overflow, reset for safety
+				}
+			}
+			// Restart listening for next byte
+			HAL_UART_Receive_IT(&huart2, &rx_buffer[rx_index], 1);
+		}
+	}
+	//-----------------------------------------------
 	while (1) {
 
-		//HAL_UART_Receive(&huart2, rxdata, sizeof(rxdata), 1000);
-		// recieve = *(uint32_t*) rxdata;
-		//(&huart2, rxdata, sizeof(rxdata), 1000);
-
-		//if (recieve == '1') {
-		//	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
-		//} else if (recieve == '0') {
-		//	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
-	//	}
-		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_9);
-		HAL_Delay(500);
-
-
+		// HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
+		// HAL_Delay(500);
 
 		/* USER CODE END WHILE */
 
