@@ -1,0 +1,2 @@
+# Exclude everything except directory Debug/
+/Debug/* 
