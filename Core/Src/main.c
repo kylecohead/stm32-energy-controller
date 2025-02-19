@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "uart_commands.h"
 
 /* USER CODE END Includes */
 
@@ -120,37 +121,9 @@ int main(void) {
 	// Transmit formatted student number
 	HAL_UART_Transmit(&huart2, (uint8_t*) tx_buffer_student_number, len, 100);
 
-	// Define receive buffer
-	uint8_t rx_buffer[50];
-	volatile uint8_t rx_index = 0;
-	// Start listening for first byte
-	HAL_UART_Receive_IT(&huart2, rx_buffer, 1);
-	//-----------------------------------------------
-	//UART receive interrupt callback
-	void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-		if (huart->Instance == USART2) {
-			// Check for full command
-			if (rx_index == 0 && rx_buffer[0] == '*') {
-				rx_index++;
-			} else if (rx_index > 0) {
-				if (rx_buffer[rx_index] == '\n') {
-					rx_buffer[rx_index] = '\0'; // Null terminate the string
-					if (strcmp((char*) rx_buffer, "*Load#") == 0) {
-						// Command to turn on LED D2
-						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
-					}
-					rx_index = 0; // Reset for next command
-				} else if (rx_index < 49) {
-					rx_index++;
-				} else {
-					rx_index = 0; // Buffer overflow, reset for safety
-				}
-			}
-			// Restart listening for next byte
-			HAL_UART_Receive_IT(&huart2, &rx_buffer[rx_index], 1);
-		}
-	}
-	//-----------------------------------------------
+	//------------------------------------------------------------
+	start_listening_for_commands();
+
 	while (1) {
 
 		// HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
