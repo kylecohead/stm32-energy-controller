@@ -108,12 +108,17 @@ int main(void) {
 	HAL_UART_Transmit(&huart2, (uint8_t*) tx_buffer_student_number, len, 100);
 
 	//------------------------------------------------------------
-	start_listening_for_commands();
+	UART_wait_for_commands();
 
 	while (1) {
 
-		// HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
-		// HAL_Delay(500);
+		if (processed_cmd_flag == 0){
+			if (current_cmd == "*Load#"){
+				 HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_9);
+			}
+
+		}
+
 
 		/* USER CODE END WHILE */
 

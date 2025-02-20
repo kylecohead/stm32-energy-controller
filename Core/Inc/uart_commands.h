@@ -8,11 +8,9 @@
 #ifndef INC_UART_COMMANDS_H_
 #define INC_UART_COMMANDS_H_
 
-#include "main.h"
-
 extern UART_HandleTypeDef huart2;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
-void start_listening_for_commands(void);
+void UART_wait_for_commands();
 
 #endif /* INC_UART_COMMANDS_H_ */

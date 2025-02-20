@@ -6,41 +6,46 @@
  */
 
 #include "uart_commands.h"
+#include "string.h"
 #include <stdint.h>
 
-
 // Define receive buffer
-uint8_t rx_buffer[50];
-volatile uint8_t rx_index = 0;
+uint8_t cmd_buffer[1000] = "";
+size_t cmd_buffer_index = 0;
+
+// Define current command buffer
+uint8_t current_cmd[1000] = "";
+uint16_t current_cmd_length = 0;
+
+// processed command flag, 1: no commands to process, 0: command to be processed
+int processed_cmd_flag = 1;
 
 //UART receive interrupt callback
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	if (huart->Instance == USART2) {
-		// Check for full command
-		if (rx_index == 0 && rx_buffer[0] == '*') {
-			rx_index++;
-		} else if (rx_index > 0) {
-			if (rx_buffer[rx_index] == '#') {
-				rx_buffer[rx_index] = '\0'; // Null terminate the string
-				if (strcmp((char*) rx_buffer, "*Load#") == 0) {
-					// Command to turn on LED D2
-					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
-				}
-				rx_index = 0; // Reset for next command
-			} else if (rx_index < 49) {
-				rx_index++;
-			} else {
-				rx_index = 0; // Buffer overflow, reset for safety
-			}
+	if (cmd_buffer[cmd_buffer_index] == '\n' || cmd_buffer[cmd_buffer_index] == '\r')
+	{
+		size_t i = cmd_buffer_index;
+		while (cmd_buffer[i] == '\r' || cmd_buffer[i] == '\r')
+		{
+			i-- ;
 		}
-		// Restart listening for next byte
-		HAL_UART_Receive_IT(&huart2, &rx_buffer[rx_index], 1);
+		strncpy(&current_cmd, cmd_buffer, i+1);
+		bzero(current_cmd, i+2);
+
+		current_cmd_length = i+1;
+		processed_cmd_flag = 1;
+		cmd_buffer_index = 0;
 	}
+	else
+	{
+		cmd_buffer_index ++;
+	}
+	UART_wait_for_commands();
 
 }
 
-void start_listening_for_commands(void) {
+void UART_wait_for_commands(void) {
 	// Start listening for first byte
-	HAL_UART_Receive_IT(&huart2, &rx_buffer[rx_index], 1);
+	HAL_UART_Receive_IT(&huart2, cmd_buffer + cmd_buffer_index, 1);
 }
 
