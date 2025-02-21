@@ -92,6 +92,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
 	// Student number to be transmitted on power up
+    HAL_Delay(150);
 	uint8_t stu_num[] = "*25964917#\n";
 	// Transmit student number
 	HAL_UART_Transmit(&huart2, stu_num, 11, 100);
