@@ -32,7 +32,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define BUFFER_SIZE 400
+#define OP_AMP_GAIN 1.33
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -41,18 +42,45 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
+
+RTC_HandleTypeDef hrtc;
+
+TIM_HandleTypeDef htim2;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+
+uint8_t rx_buffer[50];
+volatile uint8_t rx_index = 0;
+volatile uint8_t dma_complete = 0;
+uint32_t adc_buffer[BUFFER_SIZE];
+uint32_t v_max;
+uint32_t v_min;
+uint32_t i_max;
+uint32_t i_min;
+float voltage = 0.0;
+float current = 0.0;
+float apparent = 0.0;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_RTC_Init(void);
+static void MX_ADC1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
-
+void send_stat_response(void);
+void send_student_num(void);
+void start_listening_for_commands(void);
+void set_RMS(int v_or_i);
+void convert_ADC(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -88,22 +116,32 @@ int main(void) {
 
 	/* Initialize all configured peripherals */
 	MX_GPIO_Init();
+	MX_DMA_Init();
 	MX_USART2_UART_Init();
+	MX_RTC_Init();
+	MX_ADC1_Init();
+	MX_TIM2_Init();
 	/* USER CODE BEGIN 2 */
 
-	// Student number to be transmitted on power up
-	HAL_Delay(150);
-	uint8_t stu_num[] = "*25964917#\n";
-	// Transmit student number
-	HAL_UART_Transmit(&huart2, stu_num, 11, 100);
-
+	send_student_num();
 	start_listening_for_commands();
+
+	HAL_TIM_Base_Start(&htim2); // Start timer with interrupts
+	HAL_ADC_Start_DMA(&hadc1, (uint32_t) adc_buffer, 200 * 2); // Start ADC
+
+	//HAL_ADCEx_Calibration_Start(&hadc1);
 
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
-	while (1) {
+	while (1)
+	{
+		if (dma_complete)
+		{
+			convert_ADC();
+			dma_complete = 0;
+		}
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
@@ -123,10 +161,17 @@ void SystemClock_Config(void) {
 	 */
 	HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
 
+	/** Configure LSE Drive Capability
+	 */
+	HAL_PWR_EnableBkUpAccess();
+	__HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_LOW);
+
 	/** Initializes the RCC Oscillators according to the specified parameters
 	 * in the RCC_OscInitTypeDef structure.
 	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI
+			| RCC_OSCILLATORTYPE_LSE;
+	RCC_OscInitStruct.LSEState = RCC_LSE_ON;
 	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
 	RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
 	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -152,6 +197,174 @@ void SystemClock_Config(void) {
 	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
 		Error_Handler();
 	}
+}
+
+/**
+ * @brief ADC1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_ADC1_Init(void) {
+
+	/* USER CODE BEGIN ADC1_Init 0 */
+
+	/* USER CODE END ADC1_Init 0 */
+
+	ADC_ChannelConfTypeDef sConfig = { 0 };
+
+	/* USER CODE BEGIN ADC1_Init 1 */
+
+	/* USER CODE END ADC1_Init 1 */
+
+	/** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+	 */
+	hadc1.Instance = ADC1;
+	hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+	hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+	hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+	hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
+	hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+	hadc1.Init.LowPowerAutoWait = DISABLE;
+	hadc1.Init.LowPowerAutoPowerOff = DISABLE;
+	hadc1.Init.ContinuousConvMode = DISABLE;
+	hadc1.Init.NbrOfConversion = 2;
+	hadc1.Init.DiscontinuousConvMode = DISABLE;
+	hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIG_T2_TRGO;
+	hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
+	hadc1.Init.DMAContinuousRequests = ENABLE;
+	hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+	hadc1.Init.SamplingTimeCommon1 = ADC_SAMPLETIME_1CYCLE_5;
+	hadc1.Init.SamplingTimeCommon2 = ADC_SAMPLETIME_1CYCLE_5;
+	hadc1.Init.OversamplingMode = DISABLE;
+	hadc1.Init.TriggerFrequencyMode = ADC_TRIGGER_FREQ_HIGH;
+	if (HAL_ADC_Init(&hadc1) != HAL_OK) {
+		Error_Handler();
+	}
+
+	/** Configure Regular Channel
+	 */
+	sConfig.Channel = ADC_CHANNEL_0;
+	sConfig.Rank = ADC_REGULAR_RANK_1;
+	sConfig.SamplingTime = ADC_SAMPLINGTIME_COMMON_1;
+	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
+
+	/** Configure Regular Channel
+	 */
+	sConfig.Channel = ADC_CHANNEL_1;
+	sConfig.Rank = ADC_REGULAR_RANK_2;
+	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN ADC1_Init 2 */
+
+	/* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+ * @brief RTC Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_RTC_Init(void) {
+
+	/* USER CODE BEGIN RTC_Init 0 */
+
+	/* USER CODE END RTC_Init 0 */
+
+	RTC_TimeTypeDef sTime = { 0 };
+	RTC_DateTypeDef sDate = { 0 };
+
+	/* USER CODE BEGIN RTC_Init 1 */
+
+	/* USER CODE END RTC_Init 1 */
+
+	/** Initialize RTC Only
+	 */
+	hrtc.Instance = RTC;
+	hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+	hrtc.Init.AsynchPrediv = 127;
+	hrtc.Init.SynchPrediv = 255;
+	hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+	hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
+	hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+	hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+	hrtc.Init.OutPutPullUp = RTC_OUTPUT_PULLUP_NONE;
+	if (HAL_RTC_Init(&hrtc) != HAL_OK) {
+		Error_Handler();
+	}
+
+	/* USER CODE BEGIN Check_RTC_BKUP */
+
+	/* USER CODE END Check_RTC_BKUP */
+
+	/** Initialize RTC and set the Time and Date
+	 */
+	sTime.Hours = 0x22;
+	sTime.Minutes = 0x12;
+	sTime.Seconds = 0x42;
+	sTime.SubSeconds = 0x0;
+	sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+	sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+	if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK) {
+		Error_Handler();
+	}
+	sDate.WeekDay = RTC_WEEKDAY_WEDNESDAY;
+	sDate.Month = RTC_MONTH_FEBRUARY;
+	sDate.Date = 0x26;
+	sDate.Year = 0x25;
+
+	if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN RTC_Init 2 */
+
+	/* USER CODE END RTC_Init 2 */
+
+}
+
+/**
+ * @brief TIM2 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM2_Init(void) {
+
+	/* USER CODE BEGIN TIM2_Init 0 */
+
+	/* USER CODE END TIM2_Init 0 */
+
+	TIM_ClockConfigTypeDef sClockSourceConfig = { 0 };
+	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
+
+	/* USER CODE BEGIN TIM2_Init 1 */
+
+	/* USER CODE END TIM2_Init 1 */
+	htim2.Instance = TIM2;
+	htim2.Init.Prescaler = 12;
+	htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim2.Init.Period = 983;
+	htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if (HAL_TIM_Base_Init(&htim2) != HAL_OK) {
+		Error_Handler();
+	}
+	sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+	if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK) {
+		Error_Handler();
+	}
+	sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+	if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig)
+			!= HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN TIM2_Init 2 */
+
+	/* USER CODE END TIM2_Init 2 */
+
 }
 
 /**
@@ -200,6 +413,24 @@ static void MX_USART2_UART_Init(void) {
 }
 
 /**
+ * Enable DMA controller clock
+ */
+static void MX_DMA_Init(void) {
+
+	/* DMA controller clock enable */
+	__HAL_RCC_DMA1_CLK_ENABLE();
+
+	/* DMA interrupt init */
+	/* DMA1_Channel1_IRQn interrupt configuration */
+	HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+	/* DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQn interrupt configuration */
+	HAL_NVIC_SetPriority(DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(DMA1_Ch4_7_DMA2_Ch1_5_DMAMUX1_OVR_IRQn);
+
+}
+
+/**
  * @brief GPIO Initialization Function
  * @param None
  * @retval None
@@ -242,59 +473,56 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
-// Define receive buffer
-uint8_t rx_buffer[50];
-volatile uint8_t rx_index = 0;
 
-void start_listening_for_commands(void) {
+void send_student_num(void)
+{
+	// Student number to be transmitted on power up
+	HAL_Delay(150);
+	uint8_t stu_num[] = "*25964917#\n";
+	// Transmit student number
+	HAL_UART_Transmit(&huart2, stu_num, 11, 100);
+}
+
+void start_listening_for_commands(void)
+{
 	// Start listening for first byte
 	HAL_UART_Receive_IT(&huart2, &rx_buffer[rx_index], 1);
 
 }
 
 //UART receive interrupt callback
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-
-	if (huart->Instance == USART2) {
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if (huart->Instance == USART2)
+	{
 		// Check for full command
-		if (rx_index == 0 && rx_buffer[0] == '*') {
+		if (rx_index == 0 && rx_buffer[0] == '*')
+		{
 			rx_index++;
-		} else if (rx_index > 0) {
-			if (rx_buffer[rx_index] == '\n') {
+		}
+		else if (rx_index > 0)
+		{
+			if (rx_buffer[rx_index] == '\n')
+			{
 				rx_buffer[rx_index] = '\0'; // Null terminate the string
-				if (strcmp((char*) rx_buffer, "*Load#") == 0) {
+				if (strcmp((char*) rx_buffer, "*Load#") == 0)
+				{
 					// Command to toggle load switch ON/OFF
 					HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_9);
-				} else if (strcmp((char*) rx_buffer, "*Stat#") == 0) {
+				}
+				else if (strcmp((char*) rx_buffer, "*Stat#") == 0)
+				{
 					// Command to send SB status info
-					char SB_status_info[512];
-					// TEST:
-					float voltage = 0.0, phase = 0.0, power_factor = 0.0,
-							units_left = 0.0;
-					int current = 0, apparent = 0, real_power = 0, reactive_power = 0, energy = 0, max_power = 0;
-					snprintf(SB_status_info, sizeof(SB_status_info),
-							"YYYY/MM/DD HH:MM:SS\n"
-							"Voltage:      %.1fV\n"
-							"Current:       %dmA\n"
-							"Phase:      %.3frad\n"
-							"Apparent:    %.2fVA\n"
-							"Real:         %.2fW\n"
-							"Reactive:      fVAR\n"
-							"PowerFact:     %.3f\n"
-							"Energy/d:   %.2fkWh\n"
-							"MaxPower:     %.2fW\n"
-							"UnitsLeft:   .2fkWh\n", voltage, current, phase,
-							apparent, real_power, reactive_power, power_factor,
-							energy, max_power, units_left);
-					// Transmit SB stat info
-					HAL_UART_Transmit(&huart2, (uint8_t*) SB_status_info,
-							strlen(SB_status_info), 500);
+					send_stat_response();
 				}
 				rx_index = 0; // Reset for next command
-			} else if (rx_index < 49) {
+			}
+			else if (rx_index < 49)
+			{
 				rx_index++; // increase
-			} else {
+			}
+			else
+			{
 				rx_index = 0; // Buffer overflow, reset for safety
 			}
 		}
@@ -302,6 +530,107 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		HAL_UART_Receive_IT(&huart2, &rx_buffer[rx_index], 1);
 	}
 
+}
+
+void send_stat_response(void)
+{
+
+	// Get current date and time
+	RTC_TimeTypeDef sTime = { 0 };
+	RTC_DateTypeDef sDate = { 0 };
+	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+	HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+
+	// Fillers:
+	float power_factor = 0.0;
+	float units_left = 0.0;
+	float phase_diff = 0.0;
+	float real_power = 0.0;
+	float reactive_power = 0.0;
+	float energy = 0.0;
+	float max_power = 0.0;
+
+	char SB_status_info[512];
+	snprintf(SB_status_info, sizeof(SB_status_info),
+			"%04d/%02d/%02d %02d:%02d:%02d\n"
+					"Voltage:     %05.1fV\n"
+					"Current:    %05.0fmA\n"
+					"Phase:     %05.3frad\n"
+					"Apparent:    %04.0fVA\n"
+					"Real:         %04.0fW\n"
+					"Reactive:    %04.0VAR\n"
+					"PowerFact:    %04.3f\n"
+					"Energy/d:  %05.0fkWh\n"
+					"MaxPower:     %04.0fW\n"
+					"UnitsLeft: %05.1fkWh\n", 2000 + sDate.Year, sDate.Month,
+			sDate.Date, sTime.Hours, sTime.Minutes, sTime.Seconds, voltage,
+			current, phase_diff, apparent, real_power, reactive_power,
+			power_factor, energy, max_power, units_left);
+	// Transmit SB stat info
+	HAL_UART_Transmit(&huart2, (uint8_t*) SB_status_info,
+			strlen(SB_status_info), 500);
+}
+
+void convert_ADC(void)
+{
+	HAL_ADC_Stop_DMA(&hadc1);
+	uint32_t adc_buffer_copy[BUFFER_SIZE];
+	memcpy(adc_buffer_copy, (uint32_t*)adc_buffer, sizeof(uint32_t) * BUFFER_SIZE);
+	HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, BUFFER_SIZE);
+
+	v_max = 0;
+	v_min = 4095;
+	i_max = 0;
+	i_min = 4095;
+
+	for (uint16_t i = 0; i < BUFFER_SIZE/2; i++)
+	{
+		if (adc_buffer_copy[i * 2] > v_max)
+		{
+			v_max = adc_buffer_copy[i * 2];
+		}
+		if (adc_buffer_copy[i * 2] < v_min)
+		{
+			v_min = adc_buffer_copy[i * 2];
+		}
+		if (adc_buffer_copy[i * 2 + 1] > i_max)
+		{
+			i_max = adc_buffer_copy[i * 2 + 1];
+		}
+		if (adc_buffer_copy[i * 2 + 1] < i_min)
+		{
+			i_min = adc_buffer_copy[i * 2 + 1];
+		}
+	}
+
+	set_RMS(0); // flag 0 for voltage
+	set_RMS(1); // flag 1 for current
+
+}
+
+void set_RMS(int v_or_i)
+{
+	if (v_or_i == 0) // voltage
+	{
+		float vpp = v_max - v_min;
+		vpp = vpp*(3.3/4096);
+		voltage = (vpp/OP_AMP_GAIN)*115;
+	}
+	else if (v_or_i == 1) // current
+	{
+		float ipp = i_max - i_min;
+		ipp = ipp*(3.3/4096);
+		current = ((ipp/OP_AMP_GAIN)*7.5)*1000;
+	}
+	apparent = voltage*(current/1000);
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
+{
+	if (hadc->Instance == ADC1)
+	{
+		dma_complete = 1;
+	}
 }
 
 /* USER CODE END 4 */
