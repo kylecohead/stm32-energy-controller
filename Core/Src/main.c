@@ -81,8 +81,8 @@ uint32_t v_min;
 uint32_t i_max;
 uint32_t i_min;
 float voltage = 0.0;
-float voltage_buf[BUFFER_SIZE / 4];
-float current_buf[BUFFER_SIZE / 4];
+float voltage_buf[BUFFER_SIZE / 2];
+float current_buf[BUFFER_SIZE / 2];
 float current = 0.0;
 float apparent = 0.0;
 float power_factor = 0.0;
@@ -743,7 +743,7 @@ void convert_ADC(void) {
 			sizeof(uint32_t) * BUFFER_SIZE);
 	HAL_ADC_Start_DMA(&hadc1, (uint32_t*) adc_buffer, BUFFER_SIZE);
 
-	for (int i = 0; i < BUFFER_SIZE / 4; i++) {
+	for (int i = 0; i < BUFFER_SIZE / 2; i++) {
 		voltage_buf[i] = (float) adc_buffer_copy[i * 2];
 		current_buf[i] = (float) adc_buffer_copy[i * 2 + 1];
 	}
@@ -802,14 +802,16 @@ void calc_phase_diff(void) {
 	int c_cross = -1;
 
 	for (int i = 1; i < BUFFER_SIZE / 2; i++) {
-		if (voltage_buf[i - 1] < 2145 && voltage_buf[i] >= 2160) {
+		if (voltage_buf[i - 1] < 2048 && voltage_buf[i] >= 2048) {
 			v_cross = i;
+			break;
 		}
 	}
 
 	for (int i = 1; i < BUFFER_SIZE / 2; i++) {
-		if (current_buf[i - 1] < 2145 && current_buf[i] >= 2160) {
+		if (current_buf[i - 1] < 2048 && current_buf[i] >= 2048) {
 			c_cross = i;
+			break;
 		}
 	}
 
@@ -817,12 +819,12 @@ void calc_phase_diff(void) {
 		return;
 	} else {
 		float time_diff_phase = (c_cross - v_cross)/sr;
-		float phase_diff_unnorm = (time_diff_phase/(1/sr)) * 2 * M_PI; //pos: current lags voltage, neg: voltage lags current
-		while (phase_diff_unnorm > M_PI)
-			phase_diff_unnorm -= 2 * M_PI;
-		while (phase_diff_unnorm < -M_PI)
-			phase_diff_unnorm += 2 * M_PI;
-		phase_diff = phase_diff_unnorm * (180 / M_PI);
+		float phase_diff_unnorm = time_diff_phase * 50 * 2 * M_PI; //pos: current lags voltage, neg: voltage lags current
+		while (phase_diff_unnorm > M_PI/2)
+			phase_diff_unnorm -= M_PI;
+		while (phase_diff_unnorm < -M_PI/2)
+			phase_diff_unnorm += M_PI;
+		phase_diff = phase_diff_unnorm;
 	}
 }
 
