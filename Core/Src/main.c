@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <ssd1306.h>
@@ -80,6 +81,8 @@ uint32_t v_min;
 uint32_t i_max;
 uint32_t i_min;
 float voltage = 0.0;
+float voltage_buf[BUFFER_SIZE / 4];
+float current_buf[BUFFER_SIZE / 4];
 float current = 0.0;
 float apparent = 0.0;
 float power_factor = 0.0;
@@ -147,6 +150,8 @@ void writeValueAtRow(uint8_t row, const char *text);
 void updateDisplay(void);
 void updatePowerMonitorState(void);
 void initPowerMonitor(void);
+
+void calc_phase_diff(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -738,6 +743,11 @@ void convert_ADC(void) {
 			sizeof(uint32_t) * BUFFER_SIZE);
 	HAL_ADC_Start_DMA(&hadc1, (uint32_t*) adc_buffer, BUFFER_SIZE);
 
+	for (int i = 0; i < BUFFER_SIZE / 4; i++) {
+		voltage_buf[i] = (float) adc_buffer_copy[i * 2];
+		current_buf[i] = (float) adc_buffer_copy[i * 2 + 1];
+	}
+
 	v_max = 0;
 	v_min = 4095;
 	i_max = 0;
@@ -760,6 +770,7 @@ void convert_ADC(void) {
 
 	set_RMS(0); // flag 0 for voltage
 	set_RMS(1); // flag 1 for current
+	calc_phase_diff();
 
 }
 
@@ -783,6 +794,36 @@ void set_RMS(int v_or_i) {
 		//}
 	}
 	apparent = voltage * (current / 1000);
+}
+
+void calc_phase_diff(void) {
+	const float sr = 2500.0;
+	int v_cross = -1;
+	int c_cross = -1;
+
+	for (int i = 1; i < BUFFER_SIZE / 2; i++) {
+		if (voltage_buf[i - 1] < 2145 && voltage_buf[i] >= 2160) {
+			v_cross = i;
+		}
+	}
+
+	for (int i = 1; i < BUFFER_SIZE / 2; i++) {
+		if (current_buf[i - 1] < 2145 && current_buf[i] >= 2160) {
+			c_cross = i;
+		}
+	}
+
+	if (v_cross < 0 || c_cross < 0) {
+		return;
+	} else {
+		float time_diff_phase = (c_cross - v_cross)/sr;
+		float phase_diff_unnorm = (time_diff_phase/(1/sr)) * 2 * M_PI; //pos: current lags voltage, neg: voltage lags current
+		while (phase_diff_unnorm > M_PI)
+			phase_diff_unnorm -= 2 * M_PI;
+		while (phase_diff_unnorm < -M_PI)
+			phase_diff_unnorm += 2 * M_PI;
+		phase_diff = phase_diff_unnorm * (180 / M_PI);
+	}
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
@@ -1019,16 +1060,16 @@ void updateDisplay(void) {
 		break;
 
 	case STATE_LOAD_SWITCH_MENU_ON:
-			writeTextLine(0, "Load on/off");
-			writeTextLine(1, "1=ON#    2=OFF");
-			writeTextLine(2, "'*' to confirm");
-			break;
+		writeTextLine(0, "Load on/off");
+		writeTextLine(1, "1=ON#    2=OFF");
+		writeTextLine(2, "'*' to confirm");
+		break;
 
 	case STATE_LOAD_SWITCH_MENU_OFF:
-			writeTextLine(0, "Load on/off");
-			writeTextLine(1, "1=ON    2=OFF#");
-			writeTextLine(2, "'*' to confirm");
-			break;
+		writeTextLine(0, "Load on/off");
+		writeTextLine(1, "1=ON    2=OFF#");
+		writeTextLine(2, "'*' to confirm");
+		break;
 
 	case STATE_MENU_LEVEL_2:
 		writeTextLine(0, "Menu(Lv1 2):");
@@ -1043,16 +1084,16 @@ void updateDisplay(void) {
 		break;
 
 	case STATE_UNIT_COUNT_MENU_ON:
-			writeTextLine(0, "Unit Count");
-			writeTextLine(1, "1=ON#    2=OFF");
-			writeTextLine(2, "'*' to confirm");
-			break;
+		writeTextLine(0, "Unit Count");
+		writeTextLine(1, "1=ON#    2=OFF");
+		writeTextLine(2, "'*' to confirm");
+		break;
 
 	case STATE_UNIT_COUNT_MENU_OFF:
-			writeTextLine(0, "Unit Count");
-			writeTextLine(1, "1=ON    2=OFF#");
-			writeTextLine(2, "'*' to confirm");
-			break;
+		writeTextLine(0, "Unit Count");
+		writeTextLine(1, "1=ON    2=OFF#");
+		writeTextLine(2, "'*' to confirm");
+		break;
 
 	case STATE_UNITS_ADD_MENU:
 		writeTextLine(0, "Units to add:");
@@ -1130,18 +1171,18 @@ void updatePowerMonitorState(void) {
 		break;
 
 	case STATE_LOAD_SWITCH_MENU_OFF:
-			//user selected OFF
-			if (currentKeypadInput == '1') {
-				currentState = STATE_LOAD_SWITCH_MENU_ON;
-			} else if (currentKeypadInput == '*') {
-				// Confirm setting and return to default page
-				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 0);
-				currentState = STATE_DEFAULT_PAGE;
-			} else if (currentKeypadInput == '#') {
-				// Cancel and go back to previous menu
-				currentState = STATE_MENU_LEVEL_1;
-			}
-			break;
+		//user selected OFF
+		if (currentKeypadInput == '1') {
+			currentState = STATE_LOAD_SWITCH_MENU_ON;
+		} else if (currentKeypadInput == '*') {
+			// Confirm setting and return to default page
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 0);
+			currentState = STATE_DEFAULT_PAGE;
+		} else if (currentKeypadInput == '#') {
+			// Cancel and go back to previous menu
+			currentState = STATE_MENU_LEVEL_1;
+		}
+		break;
 
 	case STATE_MENU_LEVEL_2:
 		if (currentKeypadInput == '1') {
@@ -1168,28 +1209,28 @@ void updatePowerMonitorState(void) {
 		break;
 
 	case STATE_UNIT_COUNT_MENU_ON:
-			if (currentKeypadInput == '2') {
-				currentState = STATE_UNIT_COUNT_MENU_OFF;
-			} else if (currentKeypadInput == '*') {
-				// Confirm setting and return to default page - NEED TO ADD THIS FUNCTIONALITY
-				currentState = STATE_DEFAULT_PAGE;
-			} else if (currentKeypadInput == '#') {
-				// Cancel and go back to previous menu
-				currentState = STATE_MENU_LEVEL_2;
-			}
-			break;
+		if (currentKeypadInput == '2') {
+			currentState = STATE_UNIT_COUNT_MENU_OFF;
+		} else if (currentKeypadInput == '*') {
+			// Confirm setting and return to default page - NEED TO ADD THIS FUNCTIONALITY
+			currentState = STATE_DEFAULT_PAGE;
+		} else if (currentKeypadInput == '#') {
+			// Cancel and go back to previous menu
+			currentState = STATE_MENU_LEVEL_2;
+		}
+		break;
 
 	case STATE_UNIT_COUNT_MENU_OFF:
-			if (currentKeypadInput == '1') {
-				currentState = STATE_UNIT_COUNT_MENU_ON;
-			} else if (currentKeypadInput == '*') {
-				// Confirm setting and return to default page - NEED TO ADD THIS FUNCTIONALITY
-				currentState = STATE_DEFAULT_PAGE;
-			} else if (currentKeypadInput == '#') {
-				// Cancel and go back to previous menu
-				currentState = STATE_MENU_LEVEL_2;
-			}
-			break;
+		if (currentKeypadInput == '1') {
+			currentState = STATE_UNIT_COUNT_MENU_ON;
+		} else if (currentKeypadInput == '*') {
+			// Confirm setting and return to default page - NEED TO ADD THIS FUNCTIONALITY
+			currentState = STATE_DEFAULT_PAGE;
+		} else if (currentKeypadInput == '#') {
+			// Cancel and go back to previous menu
+			currentState = STATE_MENU_LEVEL_2;
+		}
+		break;
 
 	case STATE_UNITS_ADD_MENU:
 		// Handle numeric input for units value
