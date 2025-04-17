@@ -2,6 +2,7 @@
 #define __SSD1306_FONTS_H__
 
 #include "ssd1306.h"
+#include <stdint.h>
 
 #ifdef SSD1306_INCLUDE_FONT_6x8
 extern const SSD1306_Font_t Font_6x8;
