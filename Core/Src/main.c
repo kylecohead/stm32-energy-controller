@@ -94,17 +94,23 @@ float reactive_power = 0.0;
 float energy = 0.0;
 float max_power = 0.0;
 float min_units = 0.0;
+int unit_add = 0;
 
 int loadButton = 0;
 int buttonStart = 1;
 uint32_t loadButtonPressTime = 0;
 
-static uint8_t keypadState = 0; // Tracks the state of the key (0=released, 1=debouncing, 2=pressed)
+typedef enum {
+	KEYPAD_IDLE, KEYPAD_DEBOUNCE, KEYPAD_HELD, KEYPAD_WAIT_RELEASE
+} KeypadState;
+
+KeypadState keypadState = KEYPAD_IDLE;
+
 static uint32_t debounceStartTime = 0;     // When the debounce timing started
-static char detectedKey = 0;               // The key currently being debounced
+char detectedKey = 0;               // The key currently being debounced
 volatile uint8_t keypadButton = 0; // Flag set by interrupt when any key is pressed
-char currentKeypadInput = '\0';       // The most recently confirmed pressed key
-int unit_add = 0;
+char currentKeypadInput = 0;       // The most recently confirmed pressed key
+int keyHandled = 0;
 
 // State machine states
 typedef enum {
@@ -227,8 +233,10 @@ int main(void) {
 
 		if (keypadButton == 1) {
 			keypadButtonPressed();
-			if (keypadState == 2) {
+
+			if (currentKeypadInput != 0) {
 				updatePowerMonitorState();
+				currentKeypadInput = 0;
 			}
 		}
 
@@ -804,14 +812,18 @@ void power_calcs(void) {
 
 	for (int i = 1; i < BUFFER_SIZE; i++) {
 		if (voltage_buf[i - 1] < 2048 && voltage_buf[i] >= 2048) {
-			v_cross = (i-1) + ((2048-voltage_buf[i-1])/(voltage_buf[i]-voltage_buf[i-1]));
+			v_cross = (i - 1)
+					+ ((2048 - voltage_buf[i - 1])
+							/ (voltage_buf[i] - voltage_buf[i - 1]));
 			break;
 		}
 	}
 
 	for (int i = 1; i < BUFFER_SIZE; i++) {
 		if (current_buf[i - 1] < 2048 && current_buf[i] >= 2048) {
-			c_cross = (i-1) + ((2048-current_buf[i-1])/(current_buf[i]-current_buf[i-1]));
+			c_cross = (i - 1)
+					+ ((2048 - current_buf[i - 1])
+							/ (current_buf[i] - current_buf[i - 1]));
 			break;
 		}
 	}
@@ -820,24 +832,26 @@ void power_calcs(void) {
 		return;
 	} else {
 		float time_diff_phase = (c_cross - v_cross) / (sr);
-		float phase_diff_unnorm = time_diff_phase * 50*2 * M_PI; //pos: current lags voltage, neg: voltage lags current
+		float phase_diff_unnorm = time_diff_phase * 50 * 2 * M_PI; //pos: current lags voltage, neg: voltage lags current
 
-		while (phase_diff_unnorm > M_PI) phase_diff_unnorm -= 2*M_PI;
-		while (phase_diff_unnorm < -M_PI) phase_diff_unnorm += 2*M_PI;
+		while (phase_diff_unnorm > M_PI)
+			phase_diff_unnorm -= 2 * M_PI;
+		while (phase_diff_unnorm < -M_PI)
+			phase_diff_unnorm += 2 * M_PI;
 
-		if (phase_diff_unnorm > M_PI /2) {
-			phase_diff_unnorm =  M_PI - phase_diff_unnorm;
+		if (phase_diff_unnorm > M_PI / 2) {
+			phase_diff_unnorm = M_PI - phase_diff_unnorm;
 		} else if (phase_diff_unnorm < -M_PI / 2) {
 			phase_diff_unnorm = -M_PI - phase_diff_unnorm;
 		}
 		phase_diff = phase_diff_unnorm;
 	}
 
-	real_power = voltage*(current/1000)*cos(phase_diff);
-	reactive_power = voltage*(current/1000)*sin(phase_diff);
+	real_power = voltage * (current / 1000) * cos(phase_diff);
+	reactive_power = voltage * (current / 1000) * sin(phase_diff);
 	power_factor = cos(phase_diff);
-	if (real_power> max_power){
-		max_power = real_power;
+	if (real_power > max_power) {
+		max_power = real_power; // May not be correct
 	}
 }
 
@@ -940,34 +954,38 @@ void keypadButtonPressed(void) {
 	}
 
 	// Debounce logic
-	if (key != 0) {
-		if (keypadState == 0) {
-			// First detection of key press
+	switch (keypadState) {
+	case KEYPAD_IDLE:
+		if (key != 0) {
 			detectedKey = key;
 			debounceStartTime = currentTime;
-			keypadState = 1;
-			// Reset the button flag but don't update currentKeypadInput yet
-			keypadButton = 0;
-		} else if (keypadState == 1
-				&& (currentTime - debounceStartTime) > DEBOUNCE_DELAY
-				&& key == detectedKey) {
-			// Key press confirmed after debounce
-			currentKeypadInput = key;
-			keypadState = 2;
-			keypadButton = 0;
-		} else if (keypadState == 2 && key != detectedKey) {
-			detectedKey = key;
-			debounceStartTime = currentTime;
-			keypadState = 1;
-			keypadButton = 0;
-		} else {
-			// Still the same key or debouncing
+			keypadState = KEYPAD_DEBOUNCE;
+		}
+		break;
+
+	case KEYPAD_DEBOUNCE:
+		if ((currentTime - debounceStartTime) > DEBOUNCE_DELAY) {
+			if (key == detectedKey) {
+				currentKeypadInput = key;
+				keypadState = KEYPAD_HELD;
+			} else {
+				keypadState = KEYPAD_IDLE;
+			}
+		}
+		break;
+
+	case KEYPAD_HELD:
+		if (key != detectedKey) {
+			keypadState = KEYPAD_WAIT_RELEASE;
+		}
+		break;
+
+	case KEYPAD_WAIT_RELEASE:
+		if (key == 0) {
+			keypadState = KEYPAD_IDLE;
 			keypadButton = 0;
 		}
-	} else {
-		// No key detected
-		keypadState = 0;
-		keypadButton = 0;
+		break;
 	}
 
 	// Re-enable interrupt capability by setting all rows high
