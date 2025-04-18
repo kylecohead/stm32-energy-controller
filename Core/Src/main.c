@@ -83,6 +83,7 @@ uint32_t i_min;
 float voltage = 0.0;
 float voltage_buf[BUFFER_SIZE / 2];
 float current_buf[BUFFER_SIZE / 2];
+
 float current = 0.0;
 float apparent = 0.0;
 float power_factor = 0.0;
@@ -151,7 +152,7 @@ void updateDisplay(void);
 void updatePowerMonitorState(void);
 void initPowerMonitor(void);
 
-void calc_phase_diff(void);
+void power_calcs(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -770,7 +771,7 @@ void convert_ADC(void) {
 
 	set_RMS(0); // flag 0 for voltage
 	set_RMS(1); // flag 1 for current
-	calc_phase_diff();
+	power_calcs();
 
 }
 
@@ -796,21 +797,21 @@ void set_RMS(int v_or_i) {
 	apparent = voltage * (current / 1000);
 }
 
-void calc_phase_diff(void) {
-	const float sr = 2500.0;
-	int v_cross = -1;
-	int c_cross = -1;
+void power_calcs(void) {
+	const float sr = 5000.0;
+	float v_cross = -1;
+	float c_cross = -1;
 
-	for (int i = 1; i < BUFFER_SIZE / 2; i++) {
+	for (int i = 1; i < BUFFER_SIZE; i++) {
 		if (voltage_buf[i - 1] < 2048 && voltage_buf[i] >= 2048) {
-			v_cross = i;
+			v_cross = (i-1) + ((2048-voltage_buf[i-1])/(voltage_buf[i]-voltage_buf[i-1]));
 			break;
 		}
 	}
 
-	for (int i = 1; i < BUFFER_SIZE / 2; i++) {
+	for (int i = 1; i < BUFFER_SIZE; i++) {
 		if (current_buf[i - 1] < 2048 && current_buf[i] >= 2048) {
-			c_cross = i;
+			c_cross = (i-1) + ((2048-current_buf[i-1])/(current_buf[i]-current_buf[i-1]));
 			break;
 		}
 	}
@@ -818,13 +819,25 @@ void calc_phase_diff(void) {
 	if (v_cross < 0 || c_cross < 0) {
 		return;
 	} else {
-		float time_diff_phase = (c_cross - v_cross)/sr;
-		float phase_diff_unnorm = time_diff_phase * 50 * 2 * M_PI; //pos: current lags voltage, neg: voltage lags current
-		while (phase_diff_unnorm > M_PI/2)
-			phase_diff_unnorm -= M_PI;
-		while (phase_diff_unnorm < -M_PI/2)
-			phase_diff_unnorm += M_PI;
+		float time_diff_phase = (c_cross - v_cross) / (sr);
+		float phase_diff_unnorm = time_diff_phase * 50*2 * M_PI; //pos: current lags voltage, neg: voltage lags current
+
+		while (phase_diff_unnorm > M_PI) phase_diff_unnorm -= 2*M_PI;
+		while (phase_diff_unnorm < -M_PI) phase_diff_unnorm += 2*M_PI;
+
+		if (phase_diff_unnorm > M_PI /2) {
+			phase_diff_unnorm =  M_PI - phase_diff_unnorm;
+		} else if (phase_diff_unnorm < -M_PI / 2) {
+			phase_diff_unnorm = -M_PI - phase_diff_unnorm;
+		}
 		phase_diff = phase_diff_unnorm;
+	}
+
+	real_power = voltage*(current/1000)*cos(phase_diff);
+	reactive_power = voltage*(current/1000)*sin(phase_diff);
+	power_factor = cos(phase_diff);
+	if (real_power> max_power){
+		max_power = real_power;
 	}
 }
 
