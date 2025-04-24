@@ -725,21 +725,42 @@ void send_stat_response(void) {
 	HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 
 	char SB_status_info[512];
-	snprintf(SB_status_info, sizeof(SB_status_info),
-			"%04d/%02d/%02d %02d:%02d:%02d\n"
-					"Voltage:     %05.1fV\n"
-					"Current:    %05.0fmA\n"
-					"Phase:     %05.3frad\n"
-					"Apparent:    %04.0fVA\n"
-					"Real:         %04.0fW\n"
-					"Reactive:    %04.0fVAR\n"
-					"PowerFact:    %04.3f\n"
-					"Energy/d:  %05.0fkWh\n"
-					"MaxPower:     %04.0fW\n"
-					"UnitsLeft: %05.1fkWh\n", 2000 + sDate.Year, sDate.Month,
-			sDate.Date, sTime.Hours, sTime.Minutes, sTime.Seconds, voltage,
-			current, phase_diff, apparent, real_power, reactive_power,
-			power_factor, energy, max_power, units_left);
+	if (phase_diff >= 0) {
+		snprintf(SB_status_info, sizeof(SB_status_info),
+				"%04d/%02d/%02d %02d:%02d:%02d\n"
+						"Voltage:     %05.1fV\n"
+						"Current:    %05.0fmA\n"
+						"Phase:     %05.3frad\n"
+						"Apparent:    %04.0fVA\n"
+						"Real:         %04.0fW\n"
+						"Reactive:    %04.0fVAR\n"
+						"PowerFact:    %04.3f\n"
+						"Energy/d:  %05.0fkWh\n"
+						"MaxPower:     %04.0fW\n"
+						"UnitsLeft: %05.1fkWh\n", 2000 + sDate.Year,
+				sDate.Month, sDate.Date, sTime.Hours, sTime.Minutes,
+				sTime.Seconds, voltage, current, phase_diff, apparent,
+				real_power, reactive_power, power_factor, energy, max_power,
+				units_left);
+	} else {
+		snprintf(SB_status_info, sizeof(SB_status_info),
+				"%04d/%02d/%02d %02d:%02d:%02d\n"
+						"Voltage:     %05.1fV\n"
+						"Current:    %05.0fmA\n"
+						"Phase:    %05.3frad\n"
+						"Apparent:    %04.0fVA\n"
+						"Real:         %04.0fW\n"
+						"Reactive:   %04.0fVAR\n"
+						"PowerFact:    %04.3f\n"
+						"Energy/d:  %05.0fkWh\n"
+						"MaxPower:     %04.0fW\n"
+						"UnitsLeft: %05.1fkWh\n", 2000 + sDate.Year,
+				sDate.Month, sDate.Date, sTime.Hours, sTime.Minutes,
+				sTime.Seconds, voltage, current, phase_diff, apparent,
+				real_power, reactive_power, power_factor, energy, max_power,
+				units_left);
+	}
+
 	// Transmit SB stat info
 	HAL_UART_Transmit(&huart2, (uint8_t*) SB_status_info,
 			strlen(SB_status_info), 500);
@@ -807,45 +828,40 @@ void set_RMS(int v_or_i) {
 
 void power_calcs(void) {
 	const float sr = 5000.0;
-	float v_cross = -1;
-	float c_cross = -1;
+	float v_cross = 0;
+	float c_cross = 0;
+
+	float v_mid = v_min + (v_max - v_min) / 2;
+	float i_mid = i_min + (i_max - i_min) / 2;
 
 	for (int i = 1; i < BUFFER_SIZE; i++) {
-		if (voltage_buf[i - 1] < 2048 && voltage_buf[i] >= 2048) {
+		if (voltage_buf[i - 1] < v_mid && voltage_buf[i] >= v_mid) {
 			v_cross = (i - 1)
-					+ ((2048 - voltage_buf[i - 1])
+					+ ((v_mid - voltage_buf[i - 1])
 							/ (voltage_buf[i] - voltage_buf[i - 1]));
 			break;
 		}
 	}
 
 	for (int i = 1; i < BUFFER_SIZE; i++) {
-		if (current_buf[i - 1] < 2048 && current_buf[i] >= 2048) {
+		if (current_buf[i - 1] < i_mid && current_buf[i] >= i_mid) {
 			c_cross = (i - 1)
-					+ ((2048 - current_buf[i - 1])
+					+ ((i_mid - current_buf[i - 1])
 							/ (current_buf[i] - current_buf[i - 1]));
 			break;
 		}
 	}
 
-	if (v_cross < 0 || c_cross < 0) {
-		return;
-	} else {
-		float time_diff_phase = (c_cross - v_cross) / (sr);
-		float phase_diff_unnorm = time_diff_phase * 50 * 2 * M_PI; //pos: current lags voltage, neg: voltage lags current
+	float time_diff_phase = (c_cross - v_cross) / (sr);
+	float phase_diff_unnorm = time_diff_phase * 50 * 2 * M_PI; //pos: current lags voltage, neg: voltage lags current
 
-		while (phase_diff_unnorm > M_PI)
-			phase_diff_unnorm -= 2 * M_PI;
-		while (phase_diff_unnorm < -M_PI)
-			phase_diff_unnorm += 2 * M_PI;
-
-		if (phase_diff_unnorm > M_PI / 2) {
-			phase_diff_unnorm = M_PI - phase_diff_unnorm;
-		} else if (phase_diff_unnorm < -M_PI / 2) {
-			phase_diff_unnorm = -M_PI - phase_diff_unnorm;
-		}
-		phase_diff = phase_diff_unnorm;
+	if (phase_diff_unnorm > M_PI) {
+		phase_diff_unnorm = phase_diff_unnorm - 2 * M_PI;
+	} else if (phase_diff_unnorm < -M_PI) {
+		phase_diff_unnorm = phase_diff_unnorm + 2 * M_PI;
 	}
+
+	phase_diff = phase_diff_unnorm;
 
 	real_power = voltage * (current / 1000) * cos(phase_diff);
 	reactive_power = voltage * (current / 1000) * sin(phase_diff);
