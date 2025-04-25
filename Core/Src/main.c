@@ -724,16 +724,16 @@ void send_stat_response(void) {
 	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
 	HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 
-	char SB_status_info[512];
+	char SB_status_info[512]={0};
 	if (phase_diff >= 0) {
-		snprintf(SB_status_info, sizeof(SB_status_info),
+		sprintf(SB_status_info,
 				"%04d/%02d/%02d %02d:%02d:%02d\n"
 						"Voltage:     %05.1fV\n"
 						"Current:    %05.0fmA\n"
 						"Phase:     %05.3frad\n"
 						"Apparent:    %04.0fVA\n"
 						"Real:         %04.0fW\n"
-						"Reactive:    %04.0fVAR\n"
+						"Reactive:   %04.0fVAR\n"
 						"PowerFact:    %04.3f\n"
 						"Energy/d:  %05.0fkWh\n"
 						"MaxPower:     %04.0fW\n"
@@ -743,8 +743,7 @@ void send_stat_response(void) {
 				real_power, reactive_power, power_factor, energy, max_power,
 				units_left);
 	} else {
-		snprintf(SB_status_info, sizeof(SB_status_info),
-				"%04d/%02d/%02d %02d:%02d:%02d\n"
+		sprintf(SB_status_info, "%04d/%02d/%02d %02d:%02d:%02d\n"
 						"Voltage:     %05.1fV\n"
 						"Current:    %05.0fmA\n"
 						"Phase:    %05.3frad\n"
@@ -762,7 +761,7 @@ void send_stat_response(void) {
 	}
 
 	// Transmit SB stat info
-	HAL_UART_Transmit(&huart2, (uint8_t*) SB_status_info,
+	HAL_UART_Transmit(&huart2, SB_status_info,
 			strlen(SB_status_info), 500);
 }
 
