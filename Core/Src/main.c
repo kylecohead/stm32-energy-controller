@@ -37,7 +37,7 @@
 /* USER CODE BEGIN PD */
 #define BUFFER_SIZE 400
 #define OP_AMP_GAIN 1.33
-#define DEBOUNCE_DELAY 50
+#define DEBOUNCE_DELAY 20
 
 // Font and color definitions
 #define FONT Font_6x8
@@ -96,9 +96,14 @@ float max_power = 0.0;
 float min_units = 0.0;
 int unit_add = 0;
 
+// Define states for the load button
 int loadButton = 0;
-int buttonStart = 1;
-uint32_t loadButtonPressTime = 0;
+typedef enum {
+	LOAD_BTN_IDLE, LOAD_BTN_DEBOUNCE, LOAD_BTN_HELD, LOAD_BTN_WAIT_RELEASE
+} LoadButtonState;
+static LoadButtonState loadBtnState = LOAD_BTN_IDLE;
+static uint32_t loadDebounceStartTime = 0;
+static const uint32_t LOAD_DEBOUNCE_DELAY = DEBOUNCE_DELAY; // Use the same delay constant
 
 typedef enum {
 	KEYPAD_IDLE, KEYPAD_DEBOUNCE, KEYPAD_HELD, KEYPAD_WAIT_RELEASE
@@ -724,45 +729,41 @@ void send_stat_response(void) {
 	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
 	HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 
-	char SB_status_info[512]={0};
-	if (phase_diff >= 0) {
-		sprintf(SB_status_info,
-				"%04d/%02d/%02d %02d:%02d:%02d\n"
-						"Voltage:     %05.1fV\n"
-						"Current:    %05.0fmA\n"
-						"Phase:     %05.3frad\n"
-						"Apparent:    %04.0fVA\n"
-						"Real:         %04.0fW\n"
-						"Reactive:   %04.0fVAR\n"
-						"PowerFact:    %04.3f\n"
-						"Energy/d:  %05.0fkWh\n"
-						"MaxPower:     %04.0fW\n"
-						"UnitsLeft: %05.1fkWh\n", 2000 + sDate.Year,
-				sDate.Month, sDate.Date, sTime.Hours, sTime.Minutes,
-				sTime.Seconds, voltage, current, phase_diff, apparent,
-				real_power, reactive_power, power_factor, energy, max_power,
-				units_left);
+	char SB_status_info[300];
+	if (phase_diff < 0) {
+		sprintf(SB_status_info, "20%02d/%02d/%02d %02d:%02d:%02d\n"
+				"Voltage:     %05.1fV\n"
+				"Current:    %05.0fmA\n"
+				"Phase:    %05.3frad\n"
+				"Apparent:    %04.0fVA\n"
+				"Real:         %04.0fW\n"
+				"Reactive:  %04.0fVAR\n"
+				"PowerFact:    %05.3f\n"
+				"Energy/d:   %05.0fWh\n"
+				"MaxPower:     %04.0fW\n"
+				"UnitsLeft: %05.1fkWh\n", sDate.Year, sDate.Month, sDate.Date,
+				sTime.Hours, sTime.Minutes, sTime.Seconds, voltage, current,
+				phase_diff, apparent, real_power, reactive_power, power_factor,
+				energy, max_power, units_left);
 	} else {
-		sprintf(SB_status_info, "%04d/%02d/%02d %02d:%02d:%02d\n"
-						"Voltage:     %05.1fV\n"
-						"Current:    %05.0fmA\n"
-						"Phase:    %05.3frad\n"
-						"Apparent:    %04.0fVA\n"
-						"Real:         %04.0fW\n"
-						"Reactive:   %04.0fVAR\n"
-						"PowerFact:    %04.3f\n"
-						"Energy/d:  %05.0fkWh\n"
-						"MaxPower:     %04.0fW\n"
-						"UnitsLeft: %05.1fkWh\n", 2000 + sDate.Year,
-				sDate.Month, sDate.Date, sTime.Hours, sTime.Minutes,
-				sTime.Seconds, voltage, current, phase_diff, apparent,
-				real_power, reactive_power, power_factor, energy, max_power,
-				units_left);
+		sprintf(SB_status_info, "20%02d/%02d/%02d %02d:%02d:%02d\n"
+				"Voltage:     %05.1fV\n"
+				"Current:    %05.0fmA\n"
+				"Phase:     %05.3frad\n"
+				"Apparent:    %04.0fVA\n"
+				"Real:         %04.0fW\n"
+				"Reactive:   %04.0fVAR\n"
+				"PowerFact:    %05.3f\n"
+				"Energy/d:   %05.0fWh\n"
+				"MaxPower:     %04.0fW\n"
+				"UnitsLeft: %05.1fkWh\n", sDate.Year, sDate.Month, sDate.Date,
+				sTime.Hours, sTime.Minutes, sTime.Seconds, voltage, current,
+				phase_diff, apparent, real_power, reactive_power, power_factor,
+				energy, max_power, units_left);
 	}
 
 	// Transmit SB stat info
-	HAL_UART_Transmit(&huart2, SB_status_info,
-			strlen(SB_status_info), 500);
+	HAL_UART_Transmit(&huart2, SB_status_info, strlen(SB_status_info), 500);
 }
 
 void convert_ADC(void) {
@@ -877,22 +878,48 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
 }
 
 void loadButtonPressed(void) {
-	if (buttonStart == 1) {
-		loadButtonPressTime = HAL_GetTick();
-		buttonStart = 0;
-	}
-	if ((HAL_GetTick() - loadButtonPressTime) > DEBOUNCE_DELAY
-			&& HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4) == 1) {
-		// Command to toggle load switch ON/OFF
-		if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == 1) {
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 0);
-		} else if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == 0 && units_left > 0) {
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 1);
-		}
-		loadButton = 0;
-		buttonStart = 1;
-	}
+	uint32_t currentTime = HAL_GetTick();
+	uint8_t btnState = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4); // Current state of the button (1 for pressed)
 
+	switch (loadBtnState) {
+	case LOAD_BTN_IDLE:
+		if (btnState == 1) {
+			loadDebounceStartTime = currentTime;
+			loadBtnState = LOAD_BTN_DEBOUNCE;
+		}
+		break;
+	case LOAD_BTN_DEBOUNCE:
+		if ((currentTime - loadDebounceStartTime) > LOAD_DEBOUNCE_DELAY) {
+			if (btnState == 1) {
+				// Button is still pressed after debounce period
+				loadBtnState = LOAD_BTN_HELD;
+				// Execute the load toggle action
+				if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == 1) {
+					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 0);
+				} else if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == 0
+						&& units_left > 0) {
+					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 1);
+				}
+			} else {
+				// Button was released during debounce period
+				loadBtnState = LOAD_BTN_IDLE;
+			}
+		}
+		break;
+	case LOAD_BTN_HELD:
+
+		if (btnState == 0) {
+			loadBtnState = LOAD_BTN_WAIT_RELEASE;
+			break;
+			case LOAD_BTN_WAIT_RELEASE:
+			// Make sure button is fully released before going back to idle
+			if (btnState == 0) {
+				loadBtnState = LOAD_BTN_IDLE;
+				loadButton = 0; // Reset the button flag if you're using it
+			}
+			break;
+		}
+	}
 }
 
 void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin) {
