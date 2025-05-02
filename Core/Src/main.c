@@ -737,7 +737,7 @@ void send_stat_response(void) {
 				"Phase:    %05.3frad\n"
 				"Apparent:    %04.0fVA\n"
 				"Real:         %04.0fW\n"
-				"Reactive:  %04.0fVAR\n"
+				"Reactive:   %04.0fVAR\n"
 				"PowerFact:    %05.3f\n"
 				"Energy/d:   %05.0fWh\n"
 				"MaxPower:     %04.0fW\n"
