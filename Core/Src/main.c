@@ -18,12 +18,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "app_fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include <ssd1306.h>
 #include <ssd1306_fonts.h>
 /* USER CODE END Includes */
@@ -135,7 +137,10 @@ typedef enum {
 	STATE_UNIT_COUNT_MENU,
 	STATE_UNIT_COUNT_MENU_ON,
 	STATE_UNIT_COUNT_MENU_OFF,
-	STATE_UNITS_ADD_MENU
+	STATE_UNITS_ADD_MENU,
+	STATE_COUNT_RFID_ON,
+	STATE_COUNT_RFID_OFF,
+	STATE_UNITS_RFID
 } SystemState;
 
 SystemState currentState = STATE_DEFAULT_PAGE;
@@ -147,6 +152,7 @@ float wHTicker = 10.010;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
+void myprintf(const char *fmt, ...);
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
@@ -222,6 +228,9 @@ int main(void)
   MX_I2C1_Init();
   MX_SPI1_Init();
   MX_SPI3_Init();
+  if (MX_FATFS_Init() != APP_OK) {
+    Error_Handler();
+  }
   /* USER CODE BEGIN 2 */
 
 	send_student_num();
@@ -238,6 +247,89 @@ int main(void)
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, 1);
+
+	// SD Card Demo -------------------------------------------------------------------------------------------------------------------------------------
+    myprintf("\r\n~ SD card demo by kiwih ~\r\n\r\n");
+
+    HAL_Delay(1000); //a short delay is important to let the SD card settle
+
+    //some variables for FatFs
+    FATFS FatFs; 	//Fatfs handle
+    FIL fil; 		//File handle
+    FRESULT fres; //Result after operations
+
+    //Open the file system
+    fres = f_mount(&FatFs, "", 1); //1=mount now
+    if (fres != FR_OK) {
+  	myprintf("f_mount error (%i)\r\n", fres);
+  	while(1);
+    }
+
+    //Let's get some statistics from the SD card
+    DWORD free_clusters, free_sectors, total_sectors;
+
+    FATFS* getFreeFs;
+
+    fres = f_getfree("", &free_clusters, &getFreeFs);
+    if (fres != FR_OK) {
+  	myprintf("f_getfree error (%i)\r\n", fres);
+  	while(1);
+    }
+
+    //Formula comes from ChaN's documentation
+    total_sectors = (getFreeFs->n_fatent - 2) * getFreeFs->csize;
+    free_sectors = free_clusters * getFreeFs->csize;
+
+    myprintf("SD card stats:\r\n%10lu KiB total drive space.\r\n%10lu KiB available.\r\n", total_sectors / 2, free_sectors / 2);
+
+    //Now let's try to open file "text.txt"
+    fres = f_open(&fil, "text.txt", FA_READ);
+    if (fres != FR_OK) {
+  	myprintf("f_open error (%i)\r\n", fres);
+  	while(1);
+    }
+    myprintf("I was able to open 'text.txt' for reading!\r\n");
+
+    //Read 30 bytes from "text.txt" on the SD card
+    BYTE readBuf[30];
+
+    //We can either use f_read OR f_gets to get data out of files
+    //f_gets is a wrapper on f_read that does some string formatting for us
+    TCHAR* rres = f_gets((TCHAR*)readBuf, 30, &fil);
+    if(rres != 0) {
+  	myprintf("Read string from 'text.txt' contents: %s\r\n", readBuf);
+    } else {
+  	myprintf("f_gets error (%i)\r\n", fres);
+    }
+
+    //Be a tidy kiwi - don't forget to close your file!
+    f_close(&fil);
+
+    //Now let's try and write a file "write.txt"
+    fres = f_open(&fil, "write.txt", FA_WRITE | FA_OPEN_ALWAYS | FA_CREATE_ALWAYS);
+    if(fres == FR_OK) {
+  	myprintf("I was able to open 'write.txt' for writing\r\n");
+    } else {
+  	myprintf("f_open error (%i)\r\n", fres);
+    }
+
+    //Copy in a string
+    strncpy((char*)readBuf, "a new file is made!", 19);
+    UINT bytesWrote;
+    fres = f_write(&fil, readBuf, 19, &bytesWrote);
+    if(fres == FR_OK) {
+  	myprintf("Wrote %i bytes to 'write.txt'!\r\n", bytesWrote);
+    } else {
+  	myprintf("f_write error (%i)\r\n", fres);
+    }
+
+    //Be a tidy kiwi - don't forget to close your file!
+    f_close(&fil);
+
+    //We're done, so de-mount the drive
+    f_mount(NULL, "", 0);
+
+	//---------------------------------------------------------------------------------------------------------------------------------------------------
 
   /* USER CODE END 2 */
 
@@ -256,7 +348,7 @@ int main(void)
 		if (keypadButton == 1) {
 			keypadButtonPressed();
 
-			if (currentKeypadInput != 0){
+			if (currentKeypadInput != 0) {
 				updatePowerMonitorState();
 				currentKeypadInput = 0;
 			}
@@ -267,23 +359,20 @@ int main(void)
 			updateDisplay();
 		}
 
-		if (units_left < min_units){
+		if (units_left < min_units) {
 			debugLEDUnitsLow();
 		} else {
 			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, 0);
 			lastToggleTimeLEDUnitsLow = 0;
 		}
 
-		if (real_power > max_power){
+		if (real_power > max_power) {
 			debugLEDhighUsage();
 		} else {
 			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 0);
 			lastToggleTimeLEDhighUsage = 0;
 		}
 
-		if (wHTicker - units_left >= 0.001){
-			debugLEDWhTicker();
-		}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -588,7 +677,7 @@ static void MX_SPI3_Init(void)
   hspi3.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi3.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi3.Init.NSS = SPI_NSS_SOFT;
-  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
   hspi3.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -742,7 +831,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0|GPIO_PIN_10|GPIO_PIN_13, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SPI3_CS_GPIO_Port, SPI3_CS_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_9, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -783,8 +875,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PD8 PD9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9;
+  /*Configure GPIO pin : SPI3_CS_Pin */
+  GPIO_InitStruct.Pin = SPI3_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(SPI3_CS_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PD9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -1006,8 +1105,11 @@ void power_calcs(void) {
 	reactive_power = voltage * (current / 1000) * sin(phase_diff);
 	power_factor = cos(phase_diff);
 
-	if (count_units == 1){
-		units_left = units_left - (real_power * 0.04)/3600000;
+	if (count_units == 1) {
+		units_left = units_left - (real_power * 0.04) / 3600000;
+		if (wHTicker - units_left >= 0.001) {
+			debugLEDWhTicker();
+		}
 	}
 }
 
@@ -1253,12 +1355,12 @@ void updateDisplay(void) {
 				sTime.Seconds, sDate.Year, sDate.Month, sDate.Date);
 		writeTextLine(0, str);
 
-		writeTextLine(1, "Max power:  ");
-		sprintf(str, "%04.0fW", max_power);
+		writeTextLine(1, "Max power:");
+		sprintf(str, "   %04.0fW", max_power);
 		writeValueAtRow(1, str);
 
 		writeTextLine(2, "Min Units:");
-		sprintf(str, "%04.0fkWh", min_units);
+		sprintf(str, " %04.0fkWh", min_units);
 		writeValueAtRow(2, str);
 		break;
 
@@ -1316,6 +1418,18 @@ void updateDisplay(void) {
 		sprintf(unitsStr, "%d", unit_add);
 		writeTextLine(1, unitsStr);  // Value would be updated as user enters
 		writeTextLine(2, "Press '*' to add");
+		break;
+
+	case STATE_COUNT_RFID_ON:
+		writeTextLine(1, "Present Tag/Card");
+		break;
+
+	case STATE_COUNT_RFID_OFF:
+		writeTextLine(1, "Present Tag/Card");
+		break;
+
+	case STATE_UNITS_RFID:
+		writeTextLine(1, "Present Tag/Card");
 		break;
 	}
 
@@ -1427,9 +1541,7 @@ void updatePowerMonitorState(void) {
 		if (currentKeypadInput == '2') {
 			currentState = STATE_UNIT_COUNT_MENU_OFF;
 		} else if (currentKeypadInput == '*') {
-			// Confirm setting and return to default page - NEED TO ADD THIS FUNCTIONALITY
-			count_units = 1;
-			currentState = STATE_DEFAULT_PAGE;
+			currentState = STATE_COUNT_RFID_ON;
 		} else if (currentKeypadInput == '#') {
 			// Cancel and go back to previous menu
 			currentState = STATE_MENU_LEVEL_2;
@@ -1440,9 +1552,7 @@ void updatePowerMonitorState(void) {
 		if (currentKeypadInput == '1') {
 			currentState = STATE_UNIT_COUNT_MENU_ON;
 		} else if (currentKeypadInput == '*') {
-			// Confirm setting and return to default page - NEED TO ADD THIS FUNCTIONALITY
-			count_units = 0;
-			currentState = STATE_DEFAULT_PAGE;
+			currentState = STATE_COUNT_RFID_OFF;
 		} else if (currentKeypadInput == '#') {
 			// Cancel and go back to previous menu
 			currentState = STATE_MENU_LEVEL_2;
@@ -1461,14 +1571,46 @@ void updatePowerMonitorState(void) {
 				unit_add = (999.9 - units_left);
 			}
 		} else if (currentKeypadInput == '*') {
-			units_left = unit_add + units_left;
-			wHTicker= units_left;
-			unit_add = 0;
-			currentState = STATE_DEFAULT_PAGE;
+			currentState = STATE_UNITS_RFID;
 		} else if (currentKeypadInput == '#') {
 			// Cancel and go back to previous menu
 			currentState = STATE_MENU_LEVEL_2;
 			unit_add = 0;
+		}
+		break;
+
+	case STATE_COUNT_RFID_ON:
+		if (currentKeypadInput == '#') {
+			// Cancel and go back to previous menu
+			currentState = STATE_MENU_LEVEL_2;
+		} else {
+			// Wait for RFID authentication
+			//unit_count = 1;
+			// current_state = STATE_DEFAULT_PAGE;
+		}
+		break;
+
+	case STATE_COUNT_RFID_OFF:
+		if (currentKeypadInput == '#') {
+			// Cancel and go back to previous menu
+			currentState = STATE_MENU_LEVEL_2;
+		} else {
+			// Wait for RFID authentication
+			// unit_count = 0;
+			// current_state = STATE_DEFAULT_PAGE;
+		}
+		break;
+
+	case STATE_UNITS_RFID:
+		if (currentKeypadInput == '#') {
+			// Cancel and go back to previous menu
+			currentState = STATE_MENU_LEVEL_2;
+			unit_add = 0;
+		} else {
+			// Wait for RFID authentication
+			//	units_left = unit_add + units_left;
+			//	wHTicker= units_left;
+			//	unit_add = 0;
 		}
 		break;
 	}
@@ -1489,29 +1631,42 @@ void initPowerMonitor(void) {
 	updateDisplay();
 }
 
-void debugLEDWhTicker(void){
+void debugLEDWhTicker(void) {
 	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
 	wHTicker = units_left;
 }
-void debugLEDUnitsLow(void){
+void debugLEDUnitsLow(void) {
 
 	uint32_t currentTime = HAL_GetTick();
 
-	if (currentTime - lastToggleTimeLEDUnitsLow >= 500){
+	if (currentTime - lastToggleTimeLEDUnitsLow >= 500) {
 		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_4);
 		lastToggleTimeLEDUnitsLow = currentTime;
 	}
 
 }
-void debugLEDhighUsage(void){
+void debugLEDhighUsage(void) {
 
 	uint32_t currentTime = HAL_GetTick();
 
-		if (currentTime - lastToggleTimeLEDhighUsage >= 500){
-			HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
-			lastToggleTimeLEDhighUsage = currentTime;
-		}
+	if (currentTime - lastToggleTimeLEDhighUsage >= 500) {
+		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
+		lastToggleTimeLEDhighUsage = currentTime;
+	}
 }
+
+void myprintf(const char *fmt, ...) {
+  static char buffer[256];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buffer, sizeof(buffer), fmt, args);
+  va_end(args);
+
+  int len = strlen(buffer);
+  HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, -1);
+
+}
+
 
 /* USER CODE END 4 */
 

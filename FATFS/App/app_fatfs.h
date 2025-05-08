@@ -1,9 +1,8 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file           : main.h
-  * @brief          : Header for main.c file.
-  *                   This file contains the common defines of the application.
+  * @file   app_fatfs.h
+  * @brief  Header for fatfs applications
   ******************************************************************************
   * @attention
   *
@@ -19,15 +18,13 @@
 /* USER CODE END Header */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef __MAIN_H
-#define __MAIN_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#ifndef __APP_FATFS_H
+#define __APP_FATFS_H
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32g0xx_hal.h"
+#include "ff.h"
+#include "ff_gen_drv.h"
+#include "user_diskio.h" /* defines USER_Driver as external */
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -50,35 +47,21 @@ extern "C" {
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
-void Error_Handler(void);
-
+int32_t MX_FATFS_Init(void);
+int32_t MX_FATFS_Process(void);
 /* USER CODE BEGIN EFP */
 
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define B1_Pin GPIO_PIN_13
-#define B1_GPIO_Port GPIOC
-#define B1_EXTI_IRQn EXTI4_15_IRQn
-#define MCO_Pin GPIO_PIN_0
-#define MCO_GPIO_Port GPIOF
-#define USART2_TX_Pin GPIO_PIN_2
-#define USART2_TX_GPIO_Port GPIOA
-#define USART2_RX_Pin GPIO_PIN_3
-#define USART2_RX_GPIO_Port GPIOA
-#define SPI3_CS_Pin GPIO_PIN_8
-#define SPI3_CS_GPIO_Port GPIOD
-#define TMS_Pin GPIO_PIN_13
-#define TMS_GPIO_Port GPIOA
-#define TCK_Pin GPIO_PIN_14
-#define TCK_GPIO_Port GPIOA
-
 /* USER CODE BEGIN Private defines */
-#define SD_SPI_HANDLE hspi3
+#define APP_OK                      0
+#define APP_ERROR                  -1
+#define APP_SD_UNPLUGGED           -2
 /* USER CODE END Private defines */
 
-#ifdef __cplusplus
-}
-#endif
+extern FATFS USERFatFs;    /* File system object for USER logical drive */
+extern FIL USERFile;       /* File  object for USER */
+extern char USERPath[4];   /* USER logical drive path */
 
-#endif /* __MAIN_H */
+#endif /*__APP_FATFS_H */
