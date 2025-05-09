@@ -930,18 +930,13 @@ void sd_commands(int sd_flag) {
 			if (fres != FR_OK) {
 				myprintf("f_open error (%i)\r\n", fres);
 			} else {
-				//Read 30 bytes from "text.txt" on the SD card
+				//Read 100 bytes from "text.csv" on the SD card
 				BYTE readBuf[100];
 
-				//We can either use f_read OR f_gets to get data out of files
-				//f_gets is a wrapper on f_read that does some string formatting for us
-				TCHAR *rres = f_gets((TCHAR*) readBuf, sizeof(readBuf), &fil);
-				if (rres != 0) {
-					myprintf("%s\r\n", readBuf);
-				} else {
-					myprintf("f_gets error (%i)\r\n", fres);
+				TCHAR *rres;
+				while((rres = f_gets((TCHAR*)readBuf, sizeof(readBuf), &fil)) != NULL){
+					myprintf("%s", readBuf);
 				}
-
 				// Close file
 				f_close(&fil);
 			}
@@ -1019,8 +1014,6 @@ void logStats(void) {
 			fres = f_write(&fil, bufSD, strlen(bufSD), &bytesWrote);
 			if (fres != FR_OK) {
 				myprintf("f_write error (%i)\r\n", fres);
-			} else {
-				myprintf("Wrote %s", bufSD);
 			}
 
 			// Close file
