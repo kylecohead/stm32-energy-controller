@@ -106,6 +106,7 @@ float unit_add_kWH;
 int count_units = 1;
 
 int uartFlag = 0;
+int logging = 0;
 
 // Define states for the load button
 int loadButton = 0;
@@ -290,10 +291,10 @@ int main(void) {
 			updateDisplay();
 		}
 
-		if (HAL_GetTick() - lastSDLog > 1000) {
-					lastSDLog = HAL_GetTick();
-					logStats();
-				}
+		if (HAL_GetTick() - lastSDLog > 1000 && logging == 1) {
+			lastSDLog = HAL_GetTick();
+			logStats();
+		}
 
 		if (units_left < min_units) {
 			debugLEDUnitsLow();
@@ -910,7 +911,7 @@ void uartCommand(void) {
 void sd_commands(int sd_flag) {
 	switch (sd_flag) {
 	case 1:
-
+		logging = (logging + 1) % 2;
 		break;
 
 	case 2:
@@ -923,38 +924,61 @@ void sd_commands(int sd_flag) {
 		fres = f_mount(&FatFs, "", 1); //1=mount now
 		if (fres != FR_OK) {
 			myprintf("f_mount error (%i)\r\n", fres);
-			while (1)
-				;
-		}
-		//Let's try to open file "text.txt"
-		fres = f_open(&fil, "text.txt", FA_READ);
-		if (fres != FR_OK) {
-			myprintf("f_open error (%i)\r\n", fres);
-			while (1)
-				;
-		}
-		//Read 30 bytes from "text.txt" on the SD card
-		BYTE readBuf[100];
-
-		//We can either use f_read OR f_gets to get data out of files
-		//f_gets is a wrapper on f_read that does some string formatting for us
-		TCHAR *rres = f_gets((TCHAR*) readBuf, sizeof(readBuf), &fil);
-		if (rres != 0) {
-			myprintf("%s\r\n", readBuf);
 		} else {
-			myprintf("f_gets error (%i)\r\n", fres);
+			//Let's try to open file "text.csv"
+			fres = f_open(&fil, "text.csv", FA_READ);
+			if (fres != FR_OK) {
+				myprintf("f_open error (%i)\r\n", fres);
+			} else {
+				//Read 30 bytes from "text.txt" on the SD card
+				BYTE readBuf[100];
+
+				//We can either use f_read OR f_gets to get data out of files
+				//f_gets is a wrapper on f_read that does some string formatting for us
+				TCHAR *rres = f_gets((TCHAR*) readBuf, sizeof(readBuf), &fil);
+				if (rres != 0) {
+					myprintf("%s\r\n", readBuf);
+				} else {
+					myprintf("f_gets error (%i)\r\n", fres);
+				}
+
+				// Close file
+				f_close(&fil);
+			}
+			// De-mount drive
+			f_mount(NULL, "", 0);
 		}
-
-		// Close file
-		f_close(&fil);
-
-		// De-mount drive
-		f_mount(NULL, "", 0);
 		break;
 
 	case 3:
+		if (logging == 0) {
+			//some variables for FatFs
+			FATFS FatFs; 	//Fatfs handle
+			FIL fil; 		//File handle
+			FRESULT fres; //Result after operations
 
+			//Open the file system
+			fres = f_mount(&FatFs, "", 1); //1=mount now
+			if (fres != FR_OK) {
+				myprintf("f_mount error (%i)\r\n", fres);
+			} else {
+
+				//Let's try to open file "text.csv"
+				fres = f_open(&fil, "text.csv", FA_CREATE_ALWAYS | FA_WRITE);
+				if (fres != FR_OK) {
+					myprintf("f_open error (%i)\r\n", fres);
+				} else {
+
+					// Close file
+					f_close(&fil);
+				}
+
+				// De-mount drive
+				f_mount(NULL, "", 0);
+			}
+		}
 		break;
+
 	}
 
 }
@@ -969,38 +993,42 @@ void logStats(void) {
 	fres = f_mount(&FatFs, "", 1); //1=mount now
 	if (fres != FR_OK) {
 		myprintf("f_mount error (%i)\r\n", fres);
-		while (1)
-			;
+	} else {
+		// Write a file "text.txt"
+		fres = f_open(&fil, "text.csv", FA_WRITE | FA_OPEN_ALWAYS);
+		if (fres != FR_OK) {
+			myprintf("f_open error (%i)\r\n", fres);
+		} else {
+
+			f_lseek(&fil, f_size(&fil));
+			//100 bytes from "text.csv" on the SD card
+			char bufSD[100];
+
+			// Get current date and time
+			RTC_TimeTypeDef sTime = { 0 };
+			RTC_DateTypeDef sDate = { 0 };
+			HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+			HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+
+			// Copy in a string
+			sprintf(bufSD,
+					"20%02d/%02d/%02d %02d:%02d:%02d,%05.1f,%05.0f,%05.3,%07.3f\r\n",
+					sDate.Year, sDate.Month, sDate.Date, sTime.Hours,
+					sTime.Minutes, sTime.Seconds, voltage, current, units_left);
+			UINT bytesWrote;
+			fres = f_write(&fil, bufSD, strlen(bufSD), &bytesWrote);
+			if (fres != FR_OK) {
+				myprintf("f_write error (%i)\r\n", fres);
+			} else {
+				myprintf("Wrote %s", bufSD);
+			}
+
+			// Close file
+			f_close(&fil);
+		}
+		// De-mount drive
+		f_mount(NULL, "", 0);
 	}
-	// Write a file "text.txt"
-	fres = f_open(&fil, "text.txt",
-	FA_WRITE | FA_OPEN_ALWAYS | FA_CREATE_ALWAYS);
-	if (fres != FR_OK) {
-		myprintf("f_open error (%i)\r\n", fres);
-	}
-
-	//30 bytes from "text.txt" on the SD card
-	BYTE bufSD[100];
-
-	// Get current date and time
-		RTC_TimeTypeDef sTime = { 0 };
-		RTC_DateTypeDef sDate = { 0 };
-		HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
-		HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
-
-	// Copy in a string
-	sprintf(bufSD, "20%02d/%02d/%02d %02d:%02d:%02d,%05.1f,%05.0f,%05.3,%07.3f", sDate.Year, sDate.Month, sDate.Date,
-					sTime.Hours, sTime.Minutes, sTime.Seconds, voltage, current, units_left);
-	UINT bytesWrote;
-	fres = f_write(&fil, bufSD, sizeof(bufSD), &bytesWrote);
-	if (fres != FR_OK) {
-		myprintf("f_write error (%i)\r\n", fres);
-	}
-
-	// Close file
-	f_close(&fil);
-	// De-mount drive
-	f_mount(NULL, "", 0);
 
 	//---------------------------------------------------------------------------------------------------------------------------------------------------
 }
