@@ -105,11 +105,11 @@ int unit_add_wH = 0;
 float unit_add_kWH;
 int count_units = 1;
 
-int uartFlag = 0;
-int logging = 0;
+volatile int uartFlag = 0;
+volatile int logging = 0;
 
 // Define states for the load button
-int loadButton = 0;
+volatile int loadButton = 0;
 typedef enum {
 	LOAD_BTN_IDLE, LOAD_BTN_DEBOUNCE, LOAD_BTN_HELD, LOAD_BTN_WAIT_RELEASE
 } LoadButtonState;
