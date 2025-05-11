@@ -28,6 +28,7 @@
 #include <stdarg.h>
 #include <ssd1306.h>
 #include <ssd1306_fonts.h>
+#include "RC522.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -93,7 +94,7 @@ float current_buf[BUFFER_SIZE / 2];
 float current = 0.0;
 float apparent = 0.0;
 float power_factor = 0.0;
-float units_left = 10.010;
+float units_left = 0.0;
 float phase_diff = 0.0;
 float real_power = 0.0;
 float reactive_power = 0.0;
@@ -158,7 +159,6 @@ float wHTicker = 10.010;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
-void myprintf(const char *fmt, ...);
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
@@ -194,6 +194,9 @@ void debugLEDhighUsage(void);
 
 void uartCommand(void);
 void logStats(void);
+
+void initUnits(void);
+int authorise(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -244,7 +247,12 @@ int main(void) {
 
 	send_student_num();
 
+	initUnits();
+
 	initPowerMonitor();
+
+	MFRC522_Init(); // CicuitGator HQ YouTube channel
+
 	int lastUpdate = 0;
 	int lastSDLog = 0;
 
@@ -313,6 +321,7 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
+
 	}
 	/* USER CODE END 3 */
 }
@@ -560,7 +569,7 @@ static void MX_SPI1_Init(void) {
 	hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
 	hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
 	hspi1.Init.NSS = SPI_NSS_SOFT;
-	hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+	hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
 	hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
 	hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
 	hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -840,6 +849,30 @@ void start_listening_for_commands(void) {
 
 }
 
+int authorise(void) {
+	myprintf("Trying to authorise");
+	uint8_t rfidStatus;
+	uint8_t rfidStr[16];
+	uint8_t rfidNum[5];
+
+	// scan for card ID
+	rfidStatus = MFRC522_Request(PICC_REQIDL, rfidStr);
+
+	if (rfidStatus == MI_OK) {
+		myprintf("Request OK");
+		rfidStatus = MFRC522_Anticoll(rfidNum);
+		if (rfidStatus == MI_OK) {
+			myprintf("Anticoll OK");
+			if (rfidNum[0] == 75 && rfidNum[1] == 47 && rfidNum[2] == 47
+					&& rfidNum[3] == 05 && rfidNum[4] == 70) {
+				return 1;
+			}
+			myprintf("Auth failed");
+		}
+	}
+	return 0;
+}
+
 //UART receive interrupt callback
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	if (huart->Instance == USART2) {
@@ -934,7 +967,8 @@ void sd_commands(int sd_flag) {
 				BYTE readBuf[100];
 
 				TCHAR *rres;
-				while((rres = f_gets((TCHAR*)readBuf, sizeof(readBuf), &fil)) != NULL){
+				while ((rres = f_gets((TCHAR*) readBuf, sizeof(readBuf), &fil))
+						!= NULL) {
 					myprintf("%s", readBuf);
 				}
 				// Close file
@@ -974,6 +1008,51 @@ void sd_commands(int sd_flag) {
 		}
 		break;
 
+	}
+
+}
+
+void initUnits(void) {
+	//some variables for FatFs
+	FATFS FatFs; 	//Fatfs handle
+	FIL fil; 		//File handle
+	FRESULT fres; //Result after operations
+	char units_str[8];
+	//Open the file system
+	fres = f_mount(&FatFs, "", 1); //1=mount now
+	if (fres != FR_OK) {
+		myprintf("f_mount error (%i)\r\n", fres);
+	} else {
+		//Let's try to open file "text.csv"
+		fres = f_open(&fil, "text.csv", FA_READ);
+		if (fres != FR_OK) {
+			myprintf("f_open error (%i)\r\n", fres);
+		} else {
+			if (f_size(&fil) == 0) {
+				units_left = 10.010;
+			} else {
+				//Read 100 bytes from "text.csv" on the SD card
+				BYTE readBuf[100];
+				char last_line[100];
+				last_line[0] = '\0';
+
+				TCHAR *rres;
+				while ((rres = f_gets((TCHAR*) readBuf, sizeof(readBuf), &fil))
+						!= NULL) {
+					strcpy(last_line, (char*) readBuf);
+				}
+				if (strlen(last_line) >= 7) {
+					strncpy(units_str, &last_line[strlen(last_line) - 7], 7);
+					units_str[7] = '\0';
+					units_left = atof(units_str);
+				}
+
+			}
+			// Close file
+			f_close(&fil);
+		}
+		// De-mount drive
+		f_mount(NULL, "", 0);
 	}
 
 }
@@ -1022,8 +1101,6 @@ void logStats(void) {
 		// De-mount drive
 		f_mount(NULL, "", 0);
 	}
-
-	//---------------------------------------------------------------------------------------------------------------------------------------------------
 }
 
 void send_stat_response(void) {
@@ -1652,8 +1729,12 @@ void updatePowerMonitorState(void) {
 			currentState = STATE_MENU_LEVEL_2;
 		} else {
 			// Wait for RFID authentication
-			//unit_count = 1;
-			// current_state = STATE_DEFAULT_PAGE;
+			int auth = 0;
+			auth = authorise();
+			if (auth == 1) {
+				count_units = 1;
+				currentState = STATE_DEFAULT_PAGE;
+			}
 		}
 		break;
 
@@ -1663,8 +1744,12 @@ void updatePowerMonitorState(void) {
 			currentState = STATE_MENU_LEVEL_2;
 		} else {
 			// Wait for RFID authentication
-			// unit_count = 0;
-			// current_state = STATE_DEFAULT_PAGE;
+			int auth = 0;
+			auth = authorise();
+			if (auth == 1) {
+				count_units = 0;
+				currentState = STATE_DEFAULT_PAGE;
+			}
 		}
 		break;
 
@@ -1675,9 +1760,14 @@ void updatePowerMonitorState(void) {
 			unit_add = 0;
 		} else {
 			// Wait for RFID authentication
-			//	units_left = unit_add + units_left;
-			//	wHTicker= units_left;
-			//	unit_add = 0;
+			int auth = 0;
+			auth = authorise();
+			if (auth == 1) {
+				units_left = unit_add + units_left;
+				wHTicker = units_left;
+				unit_add = 0;
+				currentState = STATE_DEFAULT_PAGE;
+			}
 		}
 		break;
 	}
