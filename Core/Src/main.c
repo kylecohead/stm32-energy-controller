@@ -29,6 +29,7 @@
 #include <ssd1306.h>
 #include <ssd1306_fonts.h>
 #include "RC522.h"
+#include <ctype.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -157,6 +158,9 @@ uint32_t lastToggleTimeLEDhighUsage = 0;
 float wHTicker = 10.010;
 
 volatile int authFlag = 0;
+volatile int authOK = 0;
+uint32_t authTime = 0;
+volatile int firstAuth = 0;
 
 /* USER CODE END PV */
 
@@ -198,7 +202,7 @@ void uartCommand(void);
 void logStats(void);
 
 void initUnits(void);
-int authorise(void);
+void authorise(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -293,9 +297,11 @@ int main(void) {
 			if (currentKeypadInput != 0) {
 				updatePowerMonitorState();
 				currentKeypadInput = 0;
-			} else if (authFlag == 1){
-				updatePowerMonitorState();
 			}
+		}
+
+		if (authFlag == 1) {
+			authorise();
 		}
 
 		if (HAL_GetTick() - lastUpdate > 500) {
@@ -853,8 +859,7 @@ void start_listening_for_commands(void) {
 
 }
 
-int authorise(void) {
-	myprintf("Trying to authorise");
+void authorise(void) {
 	uint8_t rfidStatus;
 	uint8_t rfidStr[16];
 	uint8_t rfidNum[5];
@@ -863,18 +868,19 @@ int authorise(void) {
 	rfidStatus = MFRC522_Request(PICC_REQIDL, rfidStr);
 
 	if (rfidStatus == MI_OK) {
-		myprintf("Request OK");
+
 		rfidStatus = MFRC522_Anticoll(rfidNum);
 		if (rfidStatus == MI_OK) {
-			myprintf("Anticoll OK");
-			if (rfidNum[0] == 75 && rfidNum[1] == 47 && rfidNum[2] == 47
-					&& rfidNum[3] == 05 && rfidNum[4] == 70) {
-				return 1;
+
+			if (rfidNum[0] == 117 && rfidNum[1] == 71 && rfidNum[2] == 71
+					&& rfidNum[3] == 5 && rfidNum[4] == 112) {
+				authOK = 1;
+
 			}
-			myprintf("Auth failed");
+
 		}
 	}
-	return 0;
+	updatePowerMonitorState();
 }
 
 //UART receive interrupt callback
@@ -926,10 +932,14 @@ void uartCommand(void) {
 				&& rx_buffer_command[4] == 't' && rx_buffer_command[5] == 's'
 				&& rx_buffer_command[11] == '#') {
 			int i = 6;
-			while (rx_buffer_command[i] - '0' >= 0
-					&& rx_buffer_command[i] - '0' <= 9 && i < 11) {
-				unit_add_wH = unit_add_wH * 10 + (rx_buffer_command[i] - '0');
-				i++;
+			if (isdigit(
+					rx_buffer[6]) && isdigit(rx_buffer[7]) && isdigit(rx_buffer[8]) && isdigit(rx_buffer[9]) && isdigit(rx_buffer[10])) {
+				while (rx_buffer_command[i] - '0' >= 0
+						&& rx_buffer_command[i] - '0' <= 9 && i < 11) {
+					unit_add_wH = unit_add_wH * 10
+							+ (rx_buffer_command[i] - '0');
+					i++;
+				}
 			}
 			unit_add_kWH = unit_add_wH * 0.001;
 			if (unit_add_kWH + units_left >= 999.9) {
@@ -1254,7 +1264,11 @@ void power_calcs(void) {
 	power_factor = cos(phase_diff);
 
 	if (count_units == 1) {
-		units_left = units_left - (real_power * 0.04) / 3600000;
+		if (units_left - (real_power * 0.04) / 3600000 <= 0) {
+			units_left = 0;
+		} else {
+			units_left = units_left - (real_power * 0.04) / 3600000;
+		}
 		if (wHTicker - units_left >= 0.001) {
 			debugLEDWhTicker();
 		}
@@ -1687,6 +1701,7 @@ void updatePowerMonitorState(void) {
 			currentState = STATE_UNIT_COUNT_MENU_OFF;
 		} else if (currentKeypadInput == '*') {
 			authFlag = 1;
+			authTime = HAL_GetTick();
 			currentState = STATE_COUNT_RFID_ON;
 		} else if (currentKeypadInput == '#') {
 			// Cancel and go back to previous menu
@@ -1699,6 +1714,7 @@ void updatePowerMonitorState(void) {
 			currentState = STATE_UNIT_COUNT_MENU_ON;
 		} else if (currentKeypadInput == '*') {
 			authFlag = 1;
+			authTime = HAL_GetTick();
 			currentState = STATE_COUNT_RFID_OFF;
 		} else if (currentKeypadInput == '#') {
 			// Cancel and go back to previous menu
@@ -1719,6 +1735,7 @@ void updatePowerMonitorState(void) {
 			}
 		} else if (currentKeypadInput == '*') {
 			authFlag = 1;
+			authTime = HAL_GetTick();
 			currentState = STATE_UNITS_RFID;
 		} else if (currentKeypadInput == '#') {
 			// Cancel and go back to previous menu
@@ -1728,53 +1745,58 @@ void updatePowerMonitorState(void) {
 		break;
 
 	case STATE_COUNT_RFID_ON:
-		if (currentKeypadInput == '#') {
+		if (HAL_GetTick() - authTime > 5000) {
 			// Cancel and go back to previous menu
-			currentState = STATE_MENU_LEVEL_2;
+			currentState = STATE_DEFAULT_PAGE;
+			authTime = 0;
+			authFlag = 0;
 		} else {
 			// Wait for RFID authentication
-			int auth = 0;
-			myprintf("Calling %s function", "authorize");
-			auth = authorise();
-			if (auth == 1) {
+			if (authOK == 1) {
 				count_units = 1;
 				currentState = STATE_DEFAULT_PAGE;
 				authFlag = 0;
+				authOK = 0;
+				authTime = 0;
 			}
 		}
 		break;
 
 	case STATE_COUNT_RFID_OFF:
-		if (currentKeypadInput == '#') {
+		if (HAL_GetTick() - authTime > 5000) {
 			// Cancel and go back to previous menu
-			currentState = STATE_MENU_LEVEL_2;
+			currentState = STATE_DEFAULT_PAGE;
+			authTime = 0;
+			authFlag = 0;
 		} else {
 			// Wait for RFID authentication
-			int auth = 0;
-			auth = authorise();
-			if (auth == 1) {
+			if (authOK == 1) {
 				count_units = 0;
 				currentState = STATE_DEFAULT_PAGE;
 				authFlag = 0;
+				authOK = 0;
+				authTime = 0;
 			}
 		}
 		break;
 
 	case STATE_UNITS_RFID:
-		if (currentKeypadInput == '#') {
+		if (HAL_GetTick() - authTime > 5000) {
 			// Cancel and go back to previous menu
-			currentState = STATE_MENU_LEVEL_2;
+			currentState = STATE_DEFAULT_PAGE;
 			unit_add = 0;
+			authTime = 0;
+			authFlag = 0;
 		} else {
 			// Wait for RFID authentication
-			int auth = 0;
-			auth = authorise();
-			if (auth == 1) {
+			if (authOK == 1) {
 				units_left = unit_add + units_left;
 				wHTicker = units_left;
 				unit_add = 0;
 				currentState = STATE_DEFAULT_PAGE;
 				authFlag = 0;
+				authOK = 0;
+				authTime = 0;
 			}
 		}
 		break;
