@@ -156,6 +156,8 @@ uint32_t lastToggleTimeLEDUnitsLow = 0;
 uint32_t lastToggleTimeLEDhighUsage = 0;
 float wHTicker = 10.010;
 
+volatile int authFlag = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -291,6 +293,8 @@ int main(void) {
 			if (currentKeypadInput != 0) {
 				updatePowerMonitorState();
 				currentKeypadInput = 0;
+			} else if (authFlag == 1){
+				updatePowerMonitorState();
 			}
 		}
 
@@ -1672,9 +1676,6 @@ void updatePowerMonitorState(void) {
 			currentState = STATE_UNIT_COUNT_MENU_ON;
 		} else if (currentKeypadInput == '2') {
 			currentState = STATE_UNIT_COUNT_MENU_OFF;
-		} else if (currentKeypadInput == '*') {
-			// Confirm setting and return to default page
-			currentState = STATE_DEFAULT_PAGE;
 		} else if (currentKeypadInput == '#') {
 			// Cancel and go back to previous menu
 			currentState = STATE_MENU_LEVEL_2;
@@ -1685,6 +1686,7 @@ void updatePowerMonitorState(void) {
 		if (currentKeypadInput == '2') {
 			currentState = STATE_UNIT_COUNT_MENU_OFF;
 		} else if (currentKeypadInput == '*') {
+			authFlag = 1;
 			currentState = STATE_COUNT_RFID_ON;
 		} else if (currentKeypadInput == '#') {
 			// Cancel and go back to previous menu
@@ -1696,6 +1698,7 @@ void updatePowerMonitorState(void) {
 		if (currentKeypadInput == '1') {
 			currentState = STATE_UNIT_COUNT_MENU_ON;
 		} else if (currentKeypadInput == '*') {
+			authFlag = 1;
 			currentState = STATE_COUNT_RFID_OFF;
 		} else if (currentKeypadInput == '#') {
 			// Cancel and go back to previous menu
@@ -1715,6 +1718,7 @@ void updatePowerMonitorState(void) {
 				unit_add = (999.9 - units_left);
 			}
 		} else if (currentKeypadInput == '*') {
+			authFlag = 1;
 			currentState = STATE_UNITS_RFID;
 		} else if (currentKeypadInput == '#') {
 			// Cancel and go back to previous menu
@@ -1730,10 +1734,12 @@ void updatePowerMonitorState(void) {
 		} else {
 			// Wait for RFID authentication
 			int auth = 0;
+			myprintf("Calling %s function", "authorize");
 			auth = authorise();
 			if (auth == 1) {
 				count_units = 1;
 				currentState = STATE_DEFAULT_PAGE;
+				authFlag = 0;
 			}
 		}
 		break;
@@ -1749,6 +1755,7 @@ void updatePowerMonitorState(void) {
 			if (auth == 1) {
 				count_units = 0;
 				currentState = STATE_DEFAULT_PAGE;
+				authFlag = 0;
 			}
 		}
 		break;
@@ -1767,6 +1774,7 @@ void updatePowerMonitorState(void) {
 				wHTicker = units_left;
 				unit_add = 0;
 				currentState = STATE_DEFAULT_PAGE;
+				authFlag = 0;
 			}
 		}
 		break;
