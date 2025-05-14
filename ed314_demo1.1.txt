@@ -1,0 +1,154 @@
+Configuration	ed314_demo1.1
+STM32CubeMX 	6.12.1
+Date	05/13/2025
+MCU	STM32G0B1RETx
+
+
+
+PERIPHERALS	MODES	FUNCTIONS	PINS
+ADC1	IN0	ADC1_IN0	PA0
+ADC1	IN1	ADC1_IN1	PA1
+I2C1	I2C	I2C1_SCL	PB8
+I2C1	I2C	I2C1_SDA	PB9
+RCC	BYPASS Clock Source	RCC_OSC_IN	PF0-OSC_IN (PF0)
+RCC	Crystal/Ceramic Resonator	RCC_OSC32_IN	PC14-OSC32_IN (PC14)
+RCC	Crystal/Ceramic Resonator	RCC_OSC32_OUT	PC15-OSC32_OUT (PC15)
+RTC	Activate RTC Clock Source	RTC_VS_RTC_Activate	VP_RTC_VS_RTC_Activate
+RTC	RTC Enabled	RTC_VS_RTC_Calendar	VP_RTC_VS_RTC_Calendar
+SPI1	Full-Duplex Master	SPI1_MISO	PA6
+SPI1	Full-Duplex Master	SPI1_MOSI	PA7
+SPI1	Full-Duplex Master	SPI1_SCK	PA5
+SPI3	Full-Duplex Master	SPI3_MISO	PC11
+SPI3	Full-Duplex Master	SPI3_MOSI	PC12
+SPI3	Full-Duplex Master	SPI3_SCK	PB3
+SYS	Serial Wire	SYS_SWCLK	PA14-BOOT0
+SYS	Serial Wire	SYS_SWDIO	PA13
+SYS	SysTick	SYS_VS_Systick	VP_SYS_VS_Systick
+SYS	Dead Battery Signals disabled	SYS_VS_DBSignals	VP_SYS_VS_DBSignals
+TIM2	Internal Clock	TIM2_VS_ClockSourceINT	VP_TIM2_VS_ClockSourceINT
+USART2	Asynchronous	USART2_RX	PA3
+USART2	Asynchronous	USART2_TX	PA2
+
+
+
+Pin Nb	PINs	FUNCTIONs	LABELs
+1	PC11	SPI3_MISO	
+2	PC12	SPI3_MOSI	
+3	PC13	GPIO_EXTI13	B1 [blue push button]
+4	PC14-OSC32_IN (PC14)	RCC_OSC32_IN	
+5	PC15-OSC32_OUT (PC15)	RCC_OSC32_OUT	
+10	PF0-OSC_IN (PF0)	RCC_OSC_IN	MCO
+13	PC0	GPIO_Output	
+14	PC1	GPIO_EXTI1	
+17	PA0	ADC1_IN0	
+18	PA1	ADC1_IN1	
+19	PA2	USART2_TX	USART2_TX [STLK_TX]
+20	PA3	USART2_RX	USART2_RX [STLK_RX]
+21	PA4	GPIO_Output	
+22	PA5	SPI1_SCK	
+23	PA6	SPI1_MISO	
+24	PA7	SPI1_MOSI	
+27	PB0	GPIO_Output	
+29	PB2	GPIO_EXTI2	
+30	PB10	GPIO_Output	
+33	PB13	GPIO_Output	
+37	PA9	GPIO_Output	
+39	PC7	GPIO_Output	
+40	PD8	GPIO_Output	SPI3_CS
+41	PD9	GPIO_Output	
+43	PA11 [PA9]	GPIO_Output	
+44	PA12 [PA10]	GPIO_EXTI12	
+45	PA13	SYS_SWDIO	TMS
+46	PA14-BOOT0	SYS_SWCLK	TCK
+48	PC8	GPIO_Output	
+57	PB3	SPI3_SCK	
+58	PB4	GPIO_EXTI4	
+62	PB8	I2C1_SCL	
+63	PB9	I2C1_SDA	
+PERIPHERALS	MODES	FUNCTIONS	PINS
+ADC1	IN0	ADC1_IN0	PA0
+ADC1	IN1	ADC1_IN1	PA1
+I2C1	I2C	I2C1_SCL	PB8
+I2C1	I2C	I2C1_SDA	PB9
+RCC	BYPASS Clock Source	RCC_OSC_IN	PF0-OSC_IN (PF0)
+RCC	Crystal/Ceramic Resonator	RCC_OSC32_IN	PC14-OSC32_IN (PC14)
+RCC	Crystal/Ceramic Resonator	RCC_OSC32_OUT	PC15-OSC32_OUT (PC15)
+RTC	Activate RTC Clock Source	RTC_VS_RTC_Activate	VP_RTC_VS_RTC_Activate
+RTC	RTC Enabled	RTC_VS_RTC_Calendar	VP_RTC_VS_RTC_Calendar
+SPI1	Full-Duplex Master	SPI1_MISO	PA6
+SPI1	Full-Duplex Master	SPI1_MOSI	PA7
+SPI1	Full-Duplex Master	SPI1_SCK	PA5
+SPI3	Full-Duplex Master	SPI3_MISO	PC11
+SPI3	Full-Duplex Master	SPI3_MOSI	PC12
+SPI3	Full-Duplex Master	SPI3_SCK	PB3
+SYS	Serial Wire	SYS_SWCLK	PA14-BOOT0
+SYS	Serial Wire	SYS_SWDIO	PA13
+SYS	SysTick	SYS_VS_Systick	VP_SYS_VS_Systick
+SYS	Dead Battery Signals disabled	SYS_VS_DBSignals	VP_SYS_VS_DBSignals
+TIM2	Internal Clock	TIM2_VS_ClockSourceINT	VP_TIM2_VS_ClockSourceINT
+USART2	Asynchronous	USART2_RX	PA3
+USART2	Asynchronous	USART2_TX	PA2
+
+
+
+Pin Nb	PINs	FUNCTIONs	LABELs
+1	PC11	SPI3_MISO	
+2	PC12	SPI3_MOSI	
+3	PC13	GPIO_EXTI13	B1 [blue push button]
+4	PC14-OSC32_IN (PC14)	RCC_OSC32_IN	
+5	PC15-OSC32_OUT (PC15)	RCC_OSC32_OUT	
+10	PF0-OSC_IN (PF0)	RCC_OSC_IN	MCO
+13	PC0	GPIO_Output	
+14	PC1	GPIO_EXTI1	
+17	PA0	ADC1_IN0	
+18	PA1	ADC1_IN1	
+19	PA2	USART2_TX	USART2_TX [STLK_TX]
+20	PA3	USART2_RX	USART2_RX [STLK_RX]
+21	PA4	GPIO_Output	
+22	PA5	SPI1_SCK	
+23	PA6	SPI1_MISO	
+24	PA7	SPI1_MOSI	
+27	PB0	GPIO_Output	
+29	PB2	GPIO_EXTI2	
+30	PB10	GPIO_Output	
+33	PB13	GPIO_Output	
+37	PA9	GPIO_Output	
+39	PC7	GPIO_Output	
+40	PD8	GPIO_Output	SPI3_CS
+41	PD9	GPIO_Output	
+43	PA11 [PA9]	GPIO_Output	
+44	PA12 [PA10]	GPIO_EXTI12	
+45	PA13	SYS_SWDIO	TMS
+46	PA14-BOOT0	SYS_SWCLK	TCK
+48	PC8	GPIO_Output	
+57	PB3	SPI3_SCK	
+58	PB4	GPIO_EXTI4	
+62	PB8	I2C1_SCL	
+63	PB9	I2C1_SDA	
+
+
+
+SOFTWARE PROJECT
+
+Project Settings : 
+Project Name : ed314_demo1.1
+Project Folder : H:\25964917-e314-proj
+Toolchain / IDE : STM32CubeIDE
+Firmware Package Name and Version : STM32Cube FW_G0 V1.6.2
+
+
+Code Generation Settings : 
+STM32Cube MCU packages and embedded software packs : Copy only the necessary library files
+Generate peripheral initialization as a pair of '.c/.h' files per peripheral : No
+Backup previously generated files when re-generating : No
+Delete previously generated files when not re-generated : Yes
+Set all free pins as analog (to optimize the power consumption) : No
+
+
+Toolchains Settings : 
+Compiler Optimizations : 
+
+
+
+
+

@@ -148,10 +148,12 @@ typedef enum {
 	STATE_UNITS_ADD_MENU,
 	STATE_COUNT_RFID_ON,
 	STATE_COUNT_RFID_OFF,
-	STATE_UNITS_RFID
+	STATE_UNITS_RFID,
+	UNITS_ADD_RFID_UART
 } SystemState;
 
 SystemState currentState = STATE_DEFAULT_PAGE;
+SystemState prevState = STATE_DEFAULT_PAGE;
 
 uint32_t lastToggleTimeLEDUnitsLow = 0;
 uint32_t lastToggleTimeLEDhighUsage = 0;
@@ -940,15 +942,18 @@ void uartCommand(void) {
 							+ (rx_buffer_command[i] - '0');
 					i++;
 				}
+
+				unit_add_kWH = unit_add_wH * 0.001;
+			if (unit_add_kWH + units_left >= 999.999) {
+				unit_add_kWH = (999.999 - units_left);
 			}
-			unit_add_kWH = unit_add_wH * 0.001;
-			if (unit_add_kWH + units_left >= 999.9) {
-				unit_add_kWH = (999.9 - units_left);
+			prevState = currentState;
+			currentState = UNITS_ADD_RFID_UART;
+			authTime = HAL_GetTick();
+			authFlag = 1;
+			updatePowerMonitorState();
 			}
-			units_left = units_left + unit_add_kWH;
-			wHTicker = units_left;
-			unit_add_wH = 0;
-			unit_add_kWH = 0;
+
 		}
 	}
 	memset(rx_buffer_command, 0, sizeof(rx_buffer_command));
@@ -1593,6 +1598,10 @@ void updateDisplay(void) {
 	case STATE_UNITS_RFID:
 		writeTextLine(1, "Present Tag/Card");
 		break;
+
+	case UNITS_ADD_RFID_UART:
+		writeTextLine(1, "Present Tag/Card");
+		break;
 	}
 
 	// Update the physical display
@@ -1727,11 +1736,11 @@ void updatePowerMonitorState(void) {
 		if ((currentKeypadInput - '0') >= 0
 				&& (currentKeypadInput - '0') <= 9) {
 			unit_add = unit_add * 10 + (currentKeypadInput - '0');
-			if (unit_add >= 999.9) {
-				unit_add = 999.9;
+			if (unit_add >= 999.999) {
+				unit_add = 999.999;
 			}
-			if (unit_add + units_left >= 999.9) {
-				unit_add = (999.9 - units_left);
+			if (unit_add + units_left >= 999.999) {
+				unit_add = (999.999 - units_left);
 			}
 		} else if (currentKeypadInput == '*') {
 			authFlag = 1;
@@ -1794,6 +1803,29 @@ void updatePowerMonitorState(void) {
 				wHTicker = units_left;
 				unit_add = 0;
 				currentState = STATE_DEFAULT_PAGE;
+				authFlag = 0;
+				authOK = 0;
+				authTime = 0;
+			}
+		}
+		break;
+
+	case UNITS_ADD_RFID_UART:
+		if (HAL_GetTick() - authTime > 5000) {
+			// Cancel and go back to previous menu
+			currentState = prevState;
+			unit_add_kWH = 0;
+			unit_add_wH = 0;
+			authTime = 0;
+			authFlag = 0;
+		} else {
+			// Wait for RFID authentication
+			if (authOK == 1) {
+				units_left = units_left + unit_add_kWH;
+				wHTicker = units_left;
+				unit_add_wH = 0;
+				unit_add_kWH = 0;
+				currentState = prevState;
 				authFlag = 0;
 				authOK = 0;
 				authTime = 0;
