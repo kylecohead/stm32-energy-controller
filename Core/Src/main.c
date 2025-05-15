@@ -260,6 +260,7 @@ int main(void) {
 	initPowerMonitor();
 
 	MFRC522_Init(); // CicuitGator HQ YouTube channel
+	AntennaOff();
 
 	int lastUpdate = 0;
 	int lastSDLog = 0;
@@ -862,6 +863,7 @@ void start_listening_for_commands(void) {
 }
 
 void authorise(void) {
+	AntennaOn();
 	uint8_t rfidStatus;
 	uint8_t rfidStr[16];
 	uint8_t rfidNum[5];
@@ -877,11 +879,10 @@ void authorise(void) {
 			if (rfidNum[0] == 117 && rfidNum[1] == 71 && rfidNum[2] == 71
 					&& rfidNum[3] == 5 && rfidNum[4] == 112) {
 				authOK = 1;
-
 			}
-
 		}
 	}
+	AntennaOff();
 	updatePowerMonitorState();
 }
 
