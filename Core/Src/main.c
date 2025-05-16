@@ -1061,8 +1061,8 @@ void initUnits(void) {
 						!= NULL) {
 					strcpy(last_line, (char*) readBuf);
 				}
-				if (strlen(last_line) >= 7) {
-					strncpy(units_str, &last_line[strlen(last_line) - 7], 7);
+				if (strlen(last_line) >= 8) {
+					strncpy(units_str, &last_line[strlen(last_line) - 8], 7);
 					units_str[7] = '\0';
 					units_left = atof(units_str);
 				}
