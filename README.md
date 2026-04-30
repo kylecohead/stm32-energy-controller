@@ -5,7 +5,7 @@ This project was developed as a comprehensive hardware and software prototype fo
 
 ### Full Technical Documentation
 For a deep dive into the circuit schematics, component selection calculations, and software architecture, please review the complete technical report:
-[View the Technical Report (PDF)](./controllerFinal.pdf)
+[View the Technical Report (PDF)](./controllerFinalComp.pdf)
 
 ### Tech Stack and Tools
 * **Languages:** C
