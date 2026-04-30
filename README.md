@@ -18,7 +18,7 @@ I was responsible for the physical design, assembly, and testing of the custom b
 * **Peripherals:** Integrated a 4x3 matrix keypad, an I2C OLED display, an SPI RC522 RFID reader, and an SPI MicroSD card module.
 
 ### Core Software Implementations
-While the project utilizes the standard STM32 HAL framework and open-source driver libraries for specific modules (such as the SSD1306 OLED driver), I developed the core application logic and peripheral integration. Key software features include:
+While the project utilises the standard STM32 HAL framework and open-source driver libraries for specific modules (such as the SSD1306 OLED driver), I developed the core application logic and peripheral integration. Key software features include:
 * **Direct Memory Access (DMA) Sampling:** Configured the ADC to be triggered by a hardware timer at 5kHz. Used DMA to autonomously transfer the sampled voltage and current data directly to memory, freeing up the CPU for other tasks.
 * **Power Metric Algorithms:** Wrote algorithms to process the raw ADC buffers to calculate RMS voltage, RMS current, phase difference (using zero-crossing detection), real power, apparent power, and reactive power.
 * **State Machine User Interface:** Designed a Finite State Machine (FSM) to control the OLED display menus, handle keypad inputs, and manage system states.
@@ -28,3 +28,7 @@ While the project utilizes the standard STM32 HAL framework and open-source driv
 
 ### Testing and Validation
 The system was extensively verified using oscilloscopes and digital multimeters. The signal conditioning circuits, power regulation, and software measurement algorithms were calibrated and tested to achieve an accuracy margin of within 5 percent for all voltage, current, and power calculations.
+
+### Visuals
+<img width="3585" height="2196" alt="IMG_7758" src="https://github.com/user-attachments/assets/bde7bef2-8034-4be5-b406-c95c0c8f38e9" />
+
