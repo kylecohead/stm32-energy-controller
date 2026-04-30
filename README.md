@@ -5,7 +5,7 @@ This project was developed as a comprehensive hardware and software prototype fo
 
 ### Full Technical Documentation
 For a deep dive into the circuit schematics, component selection calculations, and software architecture, please review the complete technical report:
-[View the Technical Report (PDF)](./controllerFinalComp.pdf)
+[View the Technical Report (PDF)](./controllerFinal.pdf)
 
 ### Tech Stack and Tools
 * **Languages:** C
@@ -22,7 +22,7 @@ I was responsible for the physical design, assembly, and testing of the custom b
 * **Peripherals:** Integrated a 4x3 matrix keypad, an I2C OLED display, an SPI RC522 RFID reader, and an SPI MicroSD card module.
 
 ### Core Software Implementations
-While the project utilizes standard STM32 HAL frameworks and open-source drivers for specific modules, **I wrote all the custom firmware required to interface the microcontroller with every physical hardware component.** Key software features include:
+While the project utilises standard STM32 HAL frameworks and open-source drivers for specific modules, I wrote all the custom firmware required to interface the microcontroller with every physical hardware component. Key software features include:
 * **Direct Memory Access (DMA) Sampling:** Configured the ADC to be triggered by a hardware timer at 5kHz. Used DMA to autonomously transfer the sampled voltage and current data directly to memory, freeing up the CPU for other tasks.
 * **Power Metric Algorithms:** Wrote algorithms to process the raw ADC buffers to calculate RMS voltage, RMS current, phase difference (using zero-crossing detection), real power, apparent power, and reactive power.
 * **State Machine User Interface:** Designed a Finite State Machine (FSM) to control the OLED display menus, handle keypad inputs, and manage system states.
